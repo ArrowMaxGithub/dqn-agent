@@ -1,0 +1,13 @@
+[project]
+name = "dqn-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "gymnasium[classic-control]>=1.2.3",
+    "opencv-python>=4.13.0.92",
+    "pyqt6>=6.11.0",
+    "stable-baselines3>=2.8.0",
+    "tqdm>=4.67.3",
+]
