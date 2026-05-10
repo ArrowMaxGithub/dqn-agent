@@ -112,7 +112,7 @@ class Cardgame(gym.Env):
             case "lost":
                 terminated, reward = True, -1
             case "remis":
-                terminated, reward = True, 0
+                terminated, reward = True, +0.1
             case _:
                 terminated, reward = False, 0
 
@@ -183,7 +183,7 @@ class Cardgame(gym.Env):
 
 
 def main():
-    gym.register(id="custom_cardgame_v0", entry_point=Cardgame, max_episode_steps=10)
+    gym.register(id="custom_cardgame_v0", entry_point=Cardgame)
 
     learning_rate = 0.001
     epochs = 100
@@ -191,7 +191,7 @@ def main():
     episodes_test = 10_000
     start_epsilon = 1.0
     epsilon_decay = start_epsilon / (epochs * episodes_per_epoch)
-    final_epsilon = 0.0
+    final_epsilon = 0.1
 
     env = gym.make("custom_cardgame_v0", num_cards=8, num_hand_cards=3)
 

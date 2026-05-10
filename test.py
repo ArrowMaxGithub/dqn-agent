@@ -22,9 +22,9 @@ def test_agent(agent, env, num_episodes=1000):
 
     agent.epsilon = old_epsilon
 
-    win_rate = np.mean(np.array(total_rewards) > 0)
-    draw_rate = np.mean(np.array(total_rewards) == 0)
-    lose_rate = np.mean(np.array(total_rewards) < 0)
+    win_rate = np.mean(np.array(total_rewards) == +1.0)
+    draw_rate = np.mean(np.array(total_rewards) == +0.1)
+    lose_rate = np.mean(np.array(total_rewards) == -1.0)
     average_reward = np.mean(total_rewards)
 
     print(f"Test Results over {num_episodes} episodes:")

@@ -1,8 +1,9 @@
-from tqdm import tqdm
+# from tqdm import tqdm
 
 
 def train(agent, env, n_episodes):
-    for episode in tqdm(range(n_episodes)):
+    # for episode in tqdm(range(n_episodes)):
+    for episode in range(n_episodes):
         obs, info = env.reset()
         done = False
 
