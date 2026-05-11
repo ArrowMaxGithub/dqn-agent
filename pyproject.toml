@@ -11,5 +11,6 @@ dependencies = [
     "pettingzoo>=1.26.1",
     "pyqt6>=6.11.0",
     "stable-baselines3>=2.8.0",
+    "supersuit>=3.10.0",
     "tqdm>=4.67.3",
 ]

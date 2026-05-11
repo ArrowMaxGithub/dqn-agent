@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 
-@dataclass
+@dataclass(frozen=True)
 class Status(IntEnum):
     Unknown = 0
     MyCard = 1
@@ -31,11 +31,10 @@ class Status(IntEnum):
     Discarded = 3
 
 
-@dataclass
+@dataclass(frozen=True)
 class Card:
-    def __init__(self, action):
-        self.value = action if action else 0
-        self.index = action - 1 if action else -1
+    value: int
+    index: int
 
 
 class Cardgame(AECEnv):
@@ -49,14 +48,23 @@ class Cardgame(AECEnv):
         self.num_hand_cards = num_hand_cards
         self.possible_agents = [f"agent_{i}" for i in range(2)]
         self.passing_action = np.int64(0)
+        self.n_action_space = self.num_cards + 1
         self.full_deck = [
-            Card(i + 1) for i in range(self.num_cards)
+            Card(value=i + 1, index=i) for i in range(self.num_cards)
         ]  # Cards with values 1..=8 to allow easy conversion to passing_action = None/0
 
     def reset(self, seed=None, options=None):
-        self.agents = self.possible_agents.copy()
-        self.deck = self.full_deck.copy()
-        self.agents_cards = {agent: self._deal_cards() for agent in self.agents}
+        self.winner = None
+        self.agents = list(self.possible_agents)
+        self.deck = list(self.full_deck)
+
+        np.random.shuffle(self.deck)
+        self.agents_cards = {}
+        for agent in self.agents:
+            hand = self.deck[: self.num_hand_cards]
+            self.agents_cards[agent] = hand
+            self.deck = self.deck[self.num_hand_cards :]
+
         self.discard = []
         self.attacking_card = None
         self.defending_card = None
@@ -91,12 +99,14 @@ class Cardgame(AECEnv):
         return np.array(self.observations[agent])
 
     def step(self, action):
+        # action None: Agent dropped or acknowledged previous term / trunc
+        # action 0: Agent passes turn
+        # action X @ [1..num_cards + 1]: Agent plays card with value X
+
+        self._clear_rewards()
         agent = self.agent_selection
 
-        term = self.terminations[agent]
-        trunc = self.truncations[agent]
-
-        if action is None or term or trunc:
+        if action is None:
             self._remove_agent(agent)
             self.agent_selection = (
                 self.defending_agent
@@ -124,6 +134,9 @@ class Cardgame(AECEnv):
 
     def close(self):
         pass
+
+    def _get_winner(self):
+        return self.winner
 
     def _update_agent_data(self, agent):
         cards = self.agents_cards[agent]
@@ -153,7 +166,7 @@ class Cardgame(AECEnv):
         if action is None or action == self.passing_action:
             return
 
-        card = Card(action)
+        card = Card(value=action, index=action - 1)
 
         assert self.attacking_card is None
         assert card in self.agents_cards[agent]
@@ -165,7 +178,7 @@ class Cardgame(AECEnv):
         if action is None or action == self.passing_action:
             return
 
-        card = Card(action)
+        card = Card(value=action, index=action - 1)
 
         assert self.defending_card is None
         assert card in self.agents_cards[agent]
@@ -198,10 +211,14 @@ class Cardgame(AECEnv):
         atk_reward, atk_terminated, atk_truncated = 0, False, False
         def_reward, def_terminated, def_truncated = 0, False, False
 
-        # Attacker failed to attack => Both terminate, no rewards since this should never happen
+        # Attacker failed to attack => Attacker lost by default, no reward for defender
         if self.attacking_card is None:
+            atk_reward = -1
             atk_terminated = True
+            def_reward = 0
             def_terminated = True
+            self.winner = None
+            print("Warning: Attacker failed to play a card")
 
         # Defender failed to defend => Attacker won, Defender lost
         elif self.attacking_card is not None and self.defending_card is None:
@@ -209,6 +226,7 @@ class Cardgame(AECEnv):
             atk_terminated = True
             def_reward = -1
             def_terminated = True
+            self.winner = self.attacking_agent
 
         # Neither player has any cards left => Draw, small reward for both
         elif all(len(cards) == 0 for cards in self.agents_cards.values()):
@@ -216,6 +234,7 @@ class Cardgame(AECEnv):
             atk_terminated = True
             def_reward = 0.1
             def_terminated = True
+            self.winner = None
 
         self.rewards[self.attacking_agent] = atk_reward
         self.terminations[self.attacking_agent] = atk_terminated
@@ -224,15 +243,6 @@ class Cardgame(AECEnv):
         self.rewards[self.defending_agent] = def_reward
         self.terminations[self.defending_agent] = def_terminated
         self.truncations[self.defending_agent] = def_truncated
-
-    def _deal_cards(self) -> list[Card]:
-        agent_cards = []
-        while len(agent_cards) < self.num_hand_cards:
-            card = np.random.choice(self.deck)
-            self.deck.remove(card)
-            agent_cards.append(card)
-
-        return agent_cards
 
     def _remove_agent(self, agent):
         self.agents.remove(agent)
