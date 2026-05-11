@@ -445,8 +445,8 @@ def main():
     epsilon_decay = start_epsilon / (epochs * episodes_per_epoch) / 2
     final_epsilon = 0.1
 
-    num_cards = 16
-    num_hand_cards = 8
+    num_cards = 8
+    num_hand_cards = 3
 
     env = Cardgame(num_cards=num_cards, num_hand_cards=num_hand_cards)
     agents = [
