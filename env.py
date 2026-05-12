@@ -45,7 +45,14 @@ class Cardgame(AECEnv):
         self.passing_action = self.num_cards
         self.full_deck = [i for i in range(self.num_cards)]
         self.observation_spaces = {
-            agent: gym.spaces.MultiDiscrete([len(Status)] * self.num_cards)
+            agent: gym.spaces.Dict(
+                {
+                    "observations": gym.spaces.MultiDiscrete(
+                        [len(Status)] * self.num_cards
+                    ),
+                    "action_mask": gym.spaces.MultiBinary(self.num_cards + 1),
+                }
+            )
             for agent in self.possible_agents
         }
         self.action_spaces = {
@@ -78,11 +85,13 @@ class Cardgame(AECEnv):
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
         self.observations = {
-            agent: np.array([None] * self.num_cards) for agent in self.agents
+            agent: {
+                "observations": None,
+                "action_mask": None,
+            }
+            for agent in self.agents
         }
-        self.infos = {agent: {"action_mask": None} for agent in self.agents}
-        for agent in self.agents:
-            self._update_agent_data(agent)
+        self.infos = {agent: {} for agent in self.agents}
 
     def observation_space(self, agent):
         return self.observation_spaces[agent]
@@ -92,7 +101,7 @@ class Cardgame(AECEnv):
 
     def observe(self, agent):
         self._update_agent_data(agent)
-        return np.array(self.observations[agent])
+        return dict(self.observations[agent])
 
     def step(self, action):
         # action None: Agent dropped or acknowledged previous term / trunc
@@ -156,8 +165,8 @@ class Cardgame(AECEnv):
         legal = (obs == Status.MyCard) & (card_values > attack_card_value)
         mask = np.concatenate((legal, [1])).astype(np.int8)
 
-        self.observations[agent] = obs
-        self.infos[agent]["action_mask"] = mask
+        self.observations[agent]["observations"] = obs
+        self.observations[agent]["action_mask"] = mask
 
     def _handle_attack(self, agent, action):
         if action is None or action == self.passing_action:

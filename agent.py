@@ -27,11 +27,13 @@ class QAgent:
     def get_label(self):
         return "QAgent"
 
-    def get_action(self, obs, info, force_exploitation=False):
+    def get_action(self, obs_dict, force_exploitation=False):
+        mask = obs_dict["action_mask"]
+        obs = obs_dict["observation"]
+
         obs_key = self.obs_key(obs)
         q_values = self.get_q_values(obs_key)
 
-        mask = info["action_mask"]
         illegal_mask = (1 - mask) * self.illegal_mask
 
         if not any(mask[:-1]):
@@ -48,19 +50,20 @@ class QAgent:
 
     def update(
         self,
-        last_obs,  # s
+        last_obs_dict,  # s
         action: int,  # a: s -> s'
         reward: float,
         terminated: bool,
-        obs,  # s'
-        info,
+        obs_dict,  # s'
     ):
-        mask = info["action_mask"]
+        mask = obs_dict["action_mask"]
+        obs = obs_dict["observation"]
+        last_obs = last_obs_dict["observation"]
+
         illegal_mask = (1 - mask) * self.illegal_mask
 
         last_obs_key = self.obs_key(last_obs)
         last_q_values = self.get_q_values(last_obs_key)
-
         obs_key = self.obs_key(obs)
         q_values = self.get_q_values(obs_key)
 
@@ -98,8 +101,8 @@ class RandomAgent:
     def get_label(self):
         return "Random"
 
-    def get_action(self, obs, info, force_exploitation=True):
-        mask = info["action_mask"]
+    def get_action(self, obs_dict, force_exploitation=True):
+        mask = obs_dict["action_mask"]
 
         if not any(mask[:-1]):
             return self.passing_action

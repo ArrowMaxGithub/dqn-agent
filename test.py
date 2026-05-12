@@ -21,7 +21,7 @@ def test(env, agents, n_episodes) -> (float, float, float):
             if term or trunc:
                 action = None
             else:
-                action = agent.get_action(obs, info, force_exploitation=True)
+                action = agent.get_action(obs, force_exploitation=True)
 
             env.step(action)
 

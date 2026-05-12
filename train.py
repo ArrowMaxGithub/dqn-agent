@@ -18,14 +18,12 @@ def train(agents, env: AECEnv, n_episodes):
             obs, reward, term, trunc, info = env.last()
 
             if last_act[agent_id] is not None:
-                agent.update(
-                    last_obs[agent_id], last_act[agent_id], reward, term, obs, info
-                )
+                agent.update(last_obs[agent_id], last_act[agent_id], reward, term, obs)
 
             if term or trunc:
                 action = None
             else:
-                action = agent.get_action(obs, info)
+                action = agent.get_action(obs)
 
             env.step(action)
 
