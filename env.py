@@ -34,7 +34,6 @@ class Status(IntEnum):
 @dataclass(frozen=True)
 class Card:
     value: int
-    index: int
 
 
 class Cardgame(AECEnv):
@@ -47,11 +46,17 @@ class Cardgame(AECEnv):
         self.num_cards = num_cards
         self.num_hand_cards = num_hand_cards
         self.possible_agents = [f"agent_{i}" for i in range(2)]
-        self.passing_action = np.int64(0)
         self.n_action_space = self.num_cards + 1
-        self.full_deck = [
-            Card(value=i + 1, index=i) for i in range(self.num_cards)
-        ]  # Cards with values 1..=8 to allow easy conversion to passing_action = None/0
+        self.passing_action = self.num_cards
+        self.full_deck = [Card(value=i) for i in range(self.num_cards)]
+        self.observation_spaces = {
+            agent: gym.spaces.MultiDiscrete([len(Status)] * self.num_cards)
+            for agent in self.possible_agents
+        }
+        self.action_spaces = {
+            agent: gym.spaces.Discrete(self.num_cards + 1)
+            for agent in self.possible_agents
+        }
 
     def reset(self, seed=None, options=None):
         self.winner = None
@@ -80,13 +85,8 @@ class Cardgame(AECEnv):
             agent: np.array([None] * self.num_cards) for agent in self.agents
         }
         self.infos = {agent: {"action_mask": None} for agent in self.agents}
-        self.observation_spaces = {
-            agent: gym.spaces.MultiDiscrete([len(Status)] * self.num_cards)
-            for agent in self.agents
-        }
-        self.action_spaces = {
-            agent: gym.spaces.Discrete(self.num_cards + 1) for agent in self.agents
-        }
+        for agent in self.agents:
+            self._update_agent_data(agent)
 
     def observation_space(self, agent):
         return self.observation_spaces[agent]
@@ -106,7 +106,10 @@ class Cardgame(AECEnv):
         self._clear_rewards()
         agent = self.agent_selection
 
-        if action is None:
+        term = self.terminations[agent]
+        trunc = self.terminations[agent]
+
+        if (action is None or self.passing_action) and (term or trunc):
             self._remove_agent(agent)
             self.agent_selection = (
                 self.defending_agent
@@ -117,15 +120,13 @@ class Cardgame(AECEnv):
 
         if agent == self.attacking_agent:
             self._handle_attack(agent, action)
+            self._attack_reward(agent)
             self.agent_selection = self.defending_agent
         else:
             self._handle_defense(agent, action)
             self._defense_reward(agent)
             self._end_turn()
             self.agent_selection = self.attacking_agent
-
-        for agent in self.agents:
-            self._update_agent_data(agent)
 
         self._accumulate_rewards()
 
@@ -143,21 +144,21 @@ class Cardgame(AECEnv):
         obs = np.array([Status.Unknown] * self.num_cards)
 
         for card in self.discard:
-            obs[card.index] = Status.Discarded
+            obs[card.value] = Status.Discarded
 
         for card in cards:
-            obs[card.index] = Status.MyCard
+            obs[card.value] = Status.MyCard
 
         if self.attacking_card:
-            obs[self.attacking_card.index] = Status.InPlay
+            obs[self.attacking_card.value] = Status.InPlay
 
         if self.defending_card:
-            obs[self.defending_card.index] = Status.InPlay
+            obs[self.defending_card.value] = Status.InPlay
 
-        attack_card_value = self.attacking_card.value if self.attacking_card else 0
+        attack_card_value = self.attacking_card.value if self.attacking_card else -1
         card_values = np.array([card.value for card in self.full_deck])
-        legal = (obs == Status.MyCard.value) & (card_values > attack_card_value)
-        mask = np.concatenate(([1], legal.astype(np.int8))).astype(np.int8)
+        legal = (obs == Status.MyCard) & (card_values > attack_card_value)
+        mask = np.concatenate((legal, [1])).astype(np.int8)
 
         self.observations[agent] = obs
         self.infos[agent]["action_mask"] = mask
@@ -166,7 +167,7 @@ class Cardgame(AECEnv):
         if action is None or action == self.passing_action:
             return
 
-        card = Card(value=action, index=action - 1)
+        card = Card(value=action)
 
         assert self.attacking_card is None
         assert card in self.agents_cards[agent]
@@ -178,7 +179,7 @@ class Cardgame(AECEnv):
         if action is None or action == self.passing_action:
             return
 
-        card = Card(value=action, index=action - 1)
+        card = Card(value=action)
 
         assert self.defending_card is None
         assert card in self.agents_cards[agent]
@@ -206,22 +207,25 @@ class Cardgame(AECEnv):
             self.attacking_agent,
         )
 
+    # Reward, termination, truncation after attack action
+    def _attack_reward(self, agent):
+        atk_reward, atk_terminated, atk_truncated = 0, False, False
+
+        # Attacker failed to play a card
+        if self.attacking_card is None:
+            atk_terminated = True
+            self.winner = None
+
+        self.rewards[self.attacking_agent] = atk_reward
+        self.terminations[self.attacking_agent] = atk_terminated
+        self.truncations[self.attacking_agent] = atk_truncated
+
     # Reward, termination, truncation after defense action
     def _defense_reward(self, agent):
         atk_reward, atk_terminated, atk_truncated = 0, False, False
         def_reward, def_terminated, def_truncated = 0, False, False
 
-        # Attacker failed to attack => Attacker lost by default, no reward for defender
-        if self.attacking_card is None:
-            atk_reward = -1
-            atk_terminated = True
-            def_reward = 0
-            def_terminated = True
-            self.winner = None
-            print("Warning: Attacker failed to play a card")
-
-        # Defender failed to defend => Attacker won, Defender lost
-        elif self.attacking_card is not None and self.defending_card is None:
+        if self.attacking_card is not None and self.defending_card is None:
             atk_reward = +1
             atk_terminated = True
             def_reward = -1

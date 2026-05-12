@@ -18,7 +18,7 @@ def print_cross_results(results):
 def main():
     learning_rate = 0.001
     epochs = 10
-    episodes_per_epoch = 1_000
+    episodes_per_epoch = 100_000
     episodes_test = 10_000
     start_epsilon = 1.0
     epsilon_decay = start_epsilon / (epochs * episodes_per_epoch) / 2

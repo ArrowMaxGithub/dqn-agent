@@ -34,11 +34,11 @@ class QAgent:
         mask = info["action_mask"]
         illegal_mask = (1 - mask) * self.illegal_mask
 
-        if not any(mask[1:]):
+        if not any(mask[:-1]):
             return self.passing_action
         else:
-            mask[0] = 0
-            illegal_mask[0] = self.illegal_mask
+            mask[-1] = 0
+            illegal_mask[-1] = self.illegal_mask
 
         if np.random.random() < self.epsilon and not force_exploitation:
             legal_actions = np.where(mask == 1)[0]
@@ -101,14 +101,10 @@ class RandomAgent:
     def get_action(self, obs, info, force_exploitation=True):
         mask = info["action_mask"]
 
-        if not any(mask[1:]):
+        if not any(mask[:-1]):
             return self.passing_action
         else:
-            mask[0] = 0
+            mask[-1] = 0
 
         legal_actions = np.where(mask == 1)[0]
         return np.random.choice(legal_actions)
-
-
-class PPOAgent:
-    pass
