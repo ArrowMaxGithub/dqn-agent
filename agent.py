@@ -29,7 +29,7 @@ class QAgent:
 
     def get_action(self, obs_dict, force_exploitation=False):
         mask = obs_dict["action_mask"]
-        obs = obs_dict["observation"]
+        obs = obs_dict["observations"]
 
         obs_key = self.obs_key(obs)
         q_values = self.get_q_values(obs_key)
@@ -57,8 +57,8 @@ class QAgent:
         obs_dict,  # s'
     ):
         mask = obs_dict["action_mask"]
-        obs = obs_dict["observation"]
-        last_obs = last_obs_dict["observation"]
+        obs = obs_dict["observations"]
+        last_obs = last_obs_dict["observations"]
 
         illegal_mask = (1 - mask) * self.illegal_mask
 

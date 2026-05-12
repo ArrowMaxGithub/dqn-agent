@@ -1,8 +1,8 @@
 from agent import QAgent
 from agent import RandomAgent
-from train import train
-from test import cross
-from env import Cardgame
+from par_train import train
+from par_test import cross
+from par_env import Cardgame
 
 
 def print_cross_results(results):
