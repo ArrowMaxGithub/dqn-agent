@@ -31,11 +31,6 @@ class Status(IntEnum):
     Discarded = 3
 
 
-@dataclass(frozen=True)
-class Card:
-    value: int
-
-
 class Cardgame(AECEnv):
     metadata = {
         "name": "custom_cardgame_v1",
@@ -48,7 +43,7 @@ class Cardgame(AECEnv):
         self.possible_agents = [f"agent_{i}" for i in range(2)]
         self.n_action_space = self.num_cards + 1
         self.passing_action = self.num_cards
-        self.full_deck = [Card(value=i) for i in range(self.num_cards)]
+        self.full_deck = [i for i in range(self.num_cards)]
         self.observation_spaces = {
             agent: gym.spaces.MultiDiscrete([len(Status)] * self.num_cards)
             for agent in self.possible_agents
@@ -59,6 +54,7 @@ class Cardgame(AECEnv):
         }
 
     def reset(self, seed=None, options=None):
+        np.random.seed(seed)
         self.winner = None
         self.agents = list(self.possible_agents)
         self.deck = list(self.full_deck)
@@ -144,19 +140,19 @@ class Cardgame(AECEnv):
         obs = np.array([Status.Unknown] * self.num_cards)
 
         for card in self.discard:
-            obs[card.value] = Status.Discarded
+            obs[card] = Status.Discarded
 
         for card in cards:
-            obs[card.value] = Status.MyCard
+            obs[card] = Status.MyCard
 
         if self.attacking_card:
-            obs[self.attacking_card.value] = Status.InPlay
+            obs[self.attacking_card] = Status.InPlay
 
         if self.defending_card:
-            obs[self.defending_card.value] = Status.InPlay
+            obs[self.defending_card] = Status.InPlay
 
-        attack_card_value = self.attacking_card.value if self.attacking_card else -1
-        card_values = np.array([card.value for card in self.full_deck])
+        attack_card_value = self.attacking_card if self.attacking_card else -1
+        card_values = np.array([card for card in self.full_deck])
         legal = (obs == Status.MyCard) & (card_values > attack_card_value)
         mask = np.concatenate((legal, [1])).astype(np.int8)
 
@@ -167,30 +163,26 @@ class Cardgame(AECEnv):
         if action is None or action == self.passing_action:
             return
 
-        card = Card(value=action)
-
         assert self.attacking_card is None
-        assert card in self.agents_cards[agent]
+        assert action in self.agents_cards[agent]
 
-        self.agents_cards[agent].remove(card)
-        self.attacking_card = card
+        self.agents_cards[agent].remove(action)
+        self.attacking_card = action
 
     def _handle_defense(self, agent, action):
         if action is None or action == self.passing_action:
             return
 
-        card = Card(value=action)
-
         assert self.defending_card is None
-        assert card in self.agents_cards[agent]
+        assert action in self.agents_cards[agent]
 
         if self.attacking_card is None:
             return
 
-        assert card.value > self.attacking_card.value
+        assert action > self.attacking_card
 
-        self.agents_cards[agent].remove(card)
-        self.defending_card = card
+        self.agents_cards[agent].remove(action)
+        self.defending_card = action
 
     # Switch roles and discard attacking/defending cards
     def _end_turn(self):
