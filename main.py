@@ -1,5 +1,6 @@
 from agent import QAgent
 from agent import RandomAgent
+from dqn_agent import DQNAgent
 from par_train import train
 from par_test import cross
 from par_env import Cardgame
@@ -17,7 +18,7 @@ def print_cross_results(results):
 
 def main():
     learning_rate = 0.001
-    epochs = 10
+    epochs = 106
     episodes_per_epoch = 10_000
     episodes_test = 1_000
     start_epsilon = 1.0
@@ -37,27 +38,20 @@ def main():
             epsilon_decay,
             final_epsilon,
         ),
-        QAgent(
-            env.passing_action,
-            env.n_action_space,
-            learning_rate,
-            start_epsilon,
-            epsilon_decay,
-            final_epsilon,
-        ),
+        DQNAgent("/home/max/dev/dqn-agent/checkpoints"),
         RandomAgent(env.passing_action),
     ]
 
     print("Untrained agents")
-    pairings = ((0, 1), (0, 2), (2, 2))
+    pairings = ((0, 1), (0, 2), (1, 2), (2, 2))
     print_cross_results(cross(env, agents, pairings, episodes_test))
 
-    for epoch in range(epochs):
-        print(f"Starting epoch {epoch} | after {episodes_per_epoch * epoch} iterations")
-        train(agents, env, episodes_per_epoch)
-        print(f"Results after epoch {epoch}")
-        pairings = ((0, 1), (0, 2))
-        print_cross_results(cross(env, agents, pairings, episodes_test))
+    # for epoch in range(epochs):
+    #     print(f"Starting epoch {epoch} | after {episodes_per_epoch * epoch} iterations")
+    #     train(agents, env, episodes_per_epoch)
+    #     print(f"Results after epoch {epoch}")
+    #     pairings = ((0, 1), (0, 2))
+    #     print_cross_results(cross(env, agents, pairings, episodes_test))
 
 
 if __name__ == "__main__":

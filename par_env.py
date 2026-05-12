@@ -33,9 +33,7 @@ class Status(IntEnum):
 
 
 class Cardgame(ParallelEnv):
-    metadata = {
-        "name": "custom_cardgame_v1",
-    }
+    metadata = {"render_modes": [], "name": "custom_card_game_v0"}
 
     def __init__(self, num_cards=8, num_hand_cards=3):
         assert num_hand_cards * 2 <= num_cards
@@ -61,7 +59,7 @@ class Cardgame(ParallelEnv):
             for agent in self.possible_agents
         }
 
-    def reset(self, seed=None, options=None):
+    def reset(self, *, seed=None, options=None):
         np.random.seed(seed)
         self.winner = None
         self.agents = list(self.possible_agents)
@@ -83,8 +81,8 @@ class Cardgame(ParallelEnv):
         self.agent_selection = self.attacking_agent
         self.rewards = {agent: 0 for agent in self.agents}
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
-        self.terminations = {agent: False for agent in self.agents}
-        self.truncations = {agent: False for agent in self.agents}
+        self.terminateds = {agent: False for agent in self.agents}
+        self.truncateds = {agent: False for agent in self.agents}
         self.observations = {
             agent: {
                 "observations": None,
@@ -95,7 +93,7 @@ class Cardgame(ParallelEnv):
         self.infos = {agent: {} for agent in self.agents}
         state = self._update_agents_data()
 
-        return (state[0], state[4])
+        return state[0], state[4]
 
     def observation_space(self, agent):
         return self.observation_spaces[agent]
@@ -140,7 +138,7 @@ class Cardgame(ParallelEnv):
         state = self._update_agents_data()
 
         for agent in list(self.agents):
-            if self.terminations[agent] or self.truncations[agent]:
+            if self.terminateds[agent] or self.truncateds[agent]:
                 self._remove_agent(agent)
 
         if len(self.agents) > 0:
@@ -180,8 +178,8 @@ class Cardgame(ParallelEnv):
         return (
             deepcopy(self.observations),
             deepcopy(self.rewards),
-            deepcopy(self.terminations),
-            deepcopy(self.truncations),
+            deepcopy(self.terminateds),
+            deepcopy(self.truncateds),
             deepcopy(self.infos),
         )
 
@@ -246,19 +244,19 @@ class Cardgame(ParallelEnv):
             self.winner = None
 
         self.rewards[self.attacking_agent] = atk_reward
-        self.terminations[self.attacking_agent] = atk_terminated
-        self.truncations[self.attacking_agent] = atk_truncated
+        self.terminateds[self.attacking_agent] = atk_terminated
+        self.truncateds[self.attacking_agent] = atk_truncated
 
         self.rewards[self.defending_agent] = def_reward
-        self.terminations[self.defending_agent] = def_terminated
-        self.truncations[self.defending_agent] = def_truncated
+        self.terminateds[self.defending_agent] = def_terminated
+        self.truncateds[self.defending_agent] = def_truncated
 
     def _remove_agent(self, agent):
         self.agents.remove(agent)
         self.rewards.pop(agent)
         self._cumulative_rewards.pop(agent)
-        self.terminations.pop(agent)
-        self.truncations.pop(agent)
+        self.terminateds.pop(agent)
+        self.truncateds.pop(agent)
         self.observations.pop(agent)
         self.infos.pop(agent)
 
