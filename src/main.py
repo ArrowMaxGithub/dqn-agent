@@ -1,11 +1,12 @@
+import torch
+from prettytable import PrettyTable
+
 from dqn_agent import DQNAgent
 from env import Cardgame
 from q_agent import QAgent
 from random_agent import RandomAgent
 from test import cross
 from train import train
-
-import torch
 
 
 def main():
@@ -70,13 +71,14 @@ def main():
 
 
 def print_cross_results(results):
+    table = PrettyTable()
+    table.field_names = ["Pairing", "Wins", "Draws", "Losses"]
     for (a0, a1), r in results.items():
-        wins = r[0]
-        draws = r[1]
-        losses = r[2]
-        pairing = f"{a0} vs {a1}"
-        print(f"{pairing:<16}: {wins:.2f} | {draws:.2f} | {losses:.2f}")
-    print("-" * 16)
+        wins = f"{r[0]:.2f}"
+        draws = f"{r[1]:.2f}"
+        losses = f"{r[2]:.2f}"
+        table.add_row([f"{a0} vs {a1}", wins, draws, losses])
+    print(table)
 
 
 if __name__ == "__main__":
