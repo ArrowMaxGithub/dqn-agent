@@ -17,22 +17,12 @@ from ray.tune.registry import register_env
 from env import Cardgame
 
 
-def env_creator(cfg):
-    env = Cardgame()
-    return ParallelPettingZooEnv(env)
-
-
-tmp_env = env_creator(None)
-obs_space = tmp_env.observation_space["agent_0"]
-act_space = tmp_env.action_space["agent_0"]
-
-register_env("custom-cardgame-v1", env_creator)
-
-
 class DQNAgent:
     def __init__(
         self,
         passing_action,
+        num_cards,
+        num_hand_cards,
         learning_rate,
         n_steps_total,
         train_batch_size,
@@ -41,6 +31,20 @@ class DQNAgent:
         dueling,
         double_q,
     ):
+        def env_creator(cfg):
+            return ParallelPettingZooEnv(
+                Cardgame(num_cards=num_cards, num_hand_cards=num_hand_cards)
+            )
+
+        tmp_env = env_creator(None)
+        obs_space = tmp_env.observation_space["agent_0"]
+        act_space = tmp_env.action_space["agent_0"]
+
+        register_env(
+            "custom-cardgame-v1",
+            env_creator,
+        )
+
         self.passing_action = passing_action
         self.epsilon = initial_epsilon
         self.epsilon_decay = (self.epsilon - final_epsilon) / 2 * n_steps_total
@@ -86,7 +90,6 @@ class DQNAgent:
         self.module = self.algo.get_module("p0")
 
     def get_action(self, obs_dict, force_exploitation=False):
-
         if np.random.random() < self.epsilon and not force_exploitation:
             mask = obs_dict["action_mask"]
             valid_actions = np.where(mask == 1)[0]

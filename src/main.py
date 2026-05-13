@@ -21,8 +21,8 @@ def main():
     n_steps_total = epochs * episodes_per_epoch
     train_batch_size = 2048
 
-    num_cards = 8
-    num_hand_cards = 4
+    num_cards = 32
+    num_hand_cards = 8
 
     env = Cardgame(num_cards=num_cards, num_hand_cards=num_hand_cards)
     agents = [
@@ -38,6 +38,8 @@ def main():
         ),
         DQNAgent(
             passing_action=env.passing_action,
+            num_cards=num_cards,
+            num_hand_cards=num_hand_cards,
             learning_rate=0.001,
             n_steps_total=n_steps_total,
             train_batch_size=train_batch_size,
