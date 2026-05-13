@@ -236,7 +236,10 @@ class Cardgame(ParallelEnv):
         atk_reward, atk_terminated, atk_truncated = 0, False, False
         def_reward, def_terminated, def_truncated = 0, False, False
 
-        if self.attacking_card is not None and self.defending_card is None:
+        if self.attacking_card is None:
+            assert False, "attacker failed to play a card"
+
+        elif self.attacking_card is not None and self.defending_card is None:
             atk_reward = +1
             atk_terminated = True
             def_reward = -1

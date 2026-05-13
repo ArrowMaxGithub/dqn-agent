@@ -3,6 +3,8 @@ from pettingzoo import ParallelEnv
 
 
 def train(agents, env: ParallelEnv, n_episodes):
+    assert len(agents) == env.max_num_agents
+
     agents_dict = {
         agent_id: agent for agent_id, agent in zip(env.possible_agents, agents)
     }
@@ -27,4 +29,3 @@ def train(agents, env: ParallelEnv, n_episodes):
                 obs = obss[agent_id]
 
                 agent.update(last_obs, action, reward, term, obs)
-                agent.decay_epsilon()

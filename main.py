@@ -1,5 +1,5 @@
-from agent import QAgent
-from agent import RandomAgent
+from q_agent import QAgent
+from random_agent import RandomAgent
 from dqn_agent import DQNAgent
 from par_train import train
 from par_test import cross
@@ -17,13 +17,10 @@ def print_cross_results(results):
 
 
 def main():
-    learning_rate = 0.001
     epochs = 106
     episodes_per_epoch = 10_000
-    episodes_test = 10_000
+    episodes_test = 1_000
     start_epsilon = 1.0
-    epsilon_decay = start_epsilon / (epochs * episodes_per_epoch) / 2
-    final_epsilon = 0.1
 
     num_cards = 8
     num_hand_cards = 4
@@ -31,27 +28,40 @@ def main():
     env = Cardgame(num_cards=num_cards, num_hand_cards=num_hand_cards)
     agents = [
         QAgent(
-            env.passing_action,
-            env.n_action_space,
-            learning_rate,
-            start_epsilon,
-            epsilon_decay,
-            final_epsilon,
+            passing_action=env.passing_action,
+            n_action_space=env.n_action_space,
+            learning_rate=0.001,
+            initial_epsilon=1.0,
+            epsilon_decay=start_epsilon / (epochs * episodes_per_epoch) / 2,
+            final_epsilon=0.1,
+            discount_factor=0.95,
+            illegal_mask=-1e34,
         ),
-        DQNAgent("/home/max/dev/dqn-agent/checkpoints", env.passing_action),
-        RandomAgent(env.passing_action),
+        DQNAgent(
+            passing_action=env.passing_action,
+            learning_rate=0.001,
+            dueling=False,
+            double_q=False,
+        ),
+        RandomAgent(passing_action=env.passing_action),
     ]
 
+    full_pairings = ((0, 0), (0, 1), (1, 1), (0, 2), (1, 2), (2, 2))
+    learn_pairings = ((0, 0), (1, 1))
+    test_pairings = ((0, 1), (0, 2), (1, 2))
+
     print("Untrained agents")
-    pairings = ((0, 1), (0, 2), (1, 2), (2, 2))
-    print_cross_results(cross(env, agents, pairings, episodes_test))
+    print_cross_results(cross(env, agents, full_pairings, episodes_test))
 
     for epoch in range(epochs):
         print(f"Starting epoch {epoch} | after {episodes_per_epoch * epoch} iterations")
-        train(agents, env, episodes_per_epoch)
+
+        for a0, a1 in learn_pairings:
+            print(f"{agents[a0].get_label()} vs {agents[a1].get_label()}")
+            train((agents[a0], agents[a1]), env, episodes_per_epoch)
+
         print(f"Results after epoch {epoch}")
-        pairings = ((0, 1), (0, 2))
-        print_cross_results(cross(env, agents, pairings, episodes_test))
+        print_cross_results(cross(env, agents, test_pairings, episodes_test))
 
 
 if __name__ == "__main__":

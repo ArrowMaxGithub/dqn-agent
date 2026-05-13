@@ -10,8 +10,8 @@ class QAgent:
         initial_epsilon: float,
         epsilon_decay: float,
         final_epsilon: float,
-        discount_factor: float = 0.95,
-        illegal_mask: float = -1e9,
+        discount_factor: float,
+        illegal_mask: float,
     ):
         self.passing_action = passing_action
         self.n_action_space = n_action_space
@@ -31,8 +31,8 @@ class QAgent:
         mask = obs_dict["action_mask"]
         obs = obs_dict["observations"]
 
-        obs_key = self.obs_key(obs)
-        q_values = self.get_q_values(obs_key)
+        obs_key = self._obs_key(obs)
+        q_values = self._get_q_values(obs_key)
 
         illegal_mask = (1 - mask) * self.illegal_mask
 
@@ -44,64 +44,43 @@ class QAgent:
 
     def update(
         self,
-        last_obs_dict,  # s
+        obs_dict,  # s
         action: int,  # a: s -> s'
         reward: float,
         terminated: bool,
-        obs_dict,  # s'
+        next_obs_dict,  # s'
     ):
-        mask = obs_dict["action_mask"]
+        mask = next_obs_dict["action_mask"]
+        next_obs = next_obs_dict["observations"]
         obs = obs_dict["observations"]
-        last_obs = last_obs_dict["observations"]
+
+        obs_key = tuple(obs)
+        next_obs_key = tuple(next_obs)
 
         illegal_mask = (1 - mask) * self.illegal_mask
-
-        last_obs_key = self.obs_key(last_obs)
-        last_q_values = self.get_q_values(last_obs_key)
-        obs_key = self.obs_key(obs)
-        q_values = self.get_q_values(obs_key)
+        q_values = self._get_q_values(obs_key)
+        next_q_values = self._get_q_values(next_obs_key)
 
         if terminated:
             future_q_value = 0.0
         else:
-            masked_future_q_values = q_values + illegal_mask
+            masked_future_q_values = next_q_values + illegal_mask
             future_q_value = np.max(masked_future_q_values)
 
         target = reward + self.discount_factor * future_q_value
-        temporal_diff = target - last_q_values[action]
+        temporal_diff = target - q_values[action]
 
-        self.q_values[last_obs_key][action] += self.lr * temporal_diff
+        self.q_values[obs_key][action] += self.lr * temporal_diff
         self.training_error.append(temporal_diff)
+        self._decay_epsilon()
 
-    def get_q_values(self, obs_key):
+    def _get_q_values(self, obs_key):
         if obs_key not in self.q_values:
             self.q_values[obs_key] = np.zeros(self.n_action_space)
         return self.q_values[obs_key]
 
-    def decay_epsilon(self):
+    def _decay_epsilon(self):
         self.epsilon = max(self.final_epsilon, self.epsilon - self.epsilon_decay)
 
-    def obs_key(self, obs):
+    def _obs_key(self, obs):
         return tuple(obs)
-
-
-class RandomAgent:
-    def __init__(
-        self,
-        passing_action: int,
-    ):
-        self.passing_action = passing_action
-
-    def get_label(self):
-        return "Random"
-
-    def get_action(self, obs_dict, force_exploitation=True):
-        mask = obs_dict["action_mask"]
-
-        if not any(mask[:-1]):
-            return self.passing_action
-        else:
-            mask[-1] = 0
-
-        legal_actions = np.where(mask == 1)[0]
-        return np.random.choice(legal_actions)
