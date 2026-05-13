@@ -7,8 +7,8 @@ class QAgent:
         passing_action: int,
         n_action_space: int,
         learning_rate: float,
+        n_steps_total: int,
         initial_epsilon: float,
-        epsilon_decay: float,
         final_epsilon: float,
         discount_factor: float,
         illegal_mask: float,
@@ -18,7 +18,7 @@ class QAgent:
         self.q_values = {}
         self.lr = learning_rate
         self.epsilon = initial_epsilon
-        self.epsilon_decay = epsilon_decay
+        self.epsilon_decay = (self.epsilon - final_epsilon) / 2 * n_steps_total
         self.final_epsilon = final_epsilon
         self.discount_factor = discount_factor
         self.illegal_mask = illegal_mask

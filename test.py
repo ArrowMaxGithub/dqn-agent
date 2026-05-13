@@ -12,18 +12,17 @@ def test(env, agents, n_episodes) -> (float, float, float):
     agent_1_id = env.possible_agents[1]
 
     for _ in range(n_episodes):
-        env.reset()
+        obss, infos = env.reset()
 
-        for agent_id in env.agent_iter():
-            agent = agents_dict[agent_id]
-            obs, reward, term, trunc, info = env.last()
+        while env.agents:
+            actions = {
+                agent_id: agents_dict[agent_id].get_action(
+                    obss[agent_id], force_exploitation=True
+                )
+                for agent_id in env.agents
+            }
 
-            if term or trunc:
-                action = None
-            else:
-                action = agent.get_action(obs, force_exploitation=True)
-
-            env.step(action)
+            obss, rewards, terms, truncs, infos = env.step(actions)
 
         winner = env._get_winner()
         if winner == agent_0_id:

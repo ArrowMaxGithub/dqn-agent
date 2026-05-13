@@ -1,32 +1,31 @@
+from pettingzoo import ParallelEnv
 from tqdm import tqdm
-from pettingzoo import AECEnv
 
 
-def train(agents, env: AECEnv, n_episodes):
+def train(agents, env: ParallelEnv, n_episodes):
+    assert len(agents) == env.max_num_agents
+
     agents_dict = {
         agent_id: agent for agent_id, agent in zip(env.possible_agents, agents)
     }
 
     for _ in tqdm(range(n_episodes)):
-        env.reset()
+        obss, infos = env.reset()
 
-        last_act = {agent_id: None for agent_id in env.agents}
-        last_obs = {agent_id: None for agent_id in env.agents}
+        while env.agents:
+            actions = {
+                agent_id: agents_dict[agent_id].get_action(obss[agent_id])
+                for agent_id in env.agents
+            }
 
-        for agent_id in env.agent_iter():
-            agent = agents_dict[agent_id]
-            obs, reward, term, trunc, info = env.last()
+            last_obss = dict(obss)
+            obss, rewards, terms, truncs, infos = env.step(actions)
 
-            if last_act[agent_id] is not None:
-                agent.update(last_obs[agent_id], last_act[agent_id], reward, term, obs)
+            for agent_id, agent in agents_dict.items():
+                last_obs = last_obss[agent_id]
+                action = actions[agent_id]
+                reward = rewards[agent_id]
+                term = terms[agent_id]
+                obs = obss[agent_id]
 
-            if term or trunc:
-                action = None
-            else:
-                action = agent.get_action(obs)
-
-            env.step(action)
-
-            last_obs[agent_id] = obs
-            last_act[agent_id] = action
-            agent.decay_epsilon()
+                agent.update(last_obs, action, reward, term, obs)

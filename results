@@ -1,0 +1,12 @@
+previous:
+Results after epoch 9
+QAgent vs DQNAgent: 0.86 | 0.01 | 0.13
+QAgent vs Random: 0.67 | 0.09 | 0.24
+DQNAgent vs Random: 0.30 | 0.00 | 0.70
+
+---
+
+Results after epoch 9
+QAgent vs DQNAgent: 0.86 | 0.00 | 0.14
+QAgent vs Random: 0.67 | 0.09 | 0.25
+DQNAgent vs Random: 0.34 | 0.00 | 0.66

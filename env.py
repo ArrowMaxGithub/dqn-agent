@@ -15,12 +15,14 @@
 #   2: In Play - This card has been played as attack or defense card
 #   3: Discarded
 
-from pettingzoo import AECEnv
-from pettingzoo.test import api_test
-import gymnasium as gym
-import numpy as np
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import IntEnum
+
+import gymnasium as gym
+import numpy as np
+from pettingzoo import ParallelEnv
+from pettingzoo.test import parallel_api_test
 
 
 @dataclass(frozen=True)
@@ -31,10 +33,8 @@ class Status(IntEnum):
     Discarded = 3
 
 
-class Cardgame(AECEnv):
-    metadata = {
-        "name": "custom_cardgame_v1",
-    }
+class Cardgame(ParallelEnv):
+    metadata = {"render_modes": [], "name": "custom_card_game_v0"}
 
     def __init__(self, num_cards=8, num_hand_cards=3):
         assert num_hand_cards * 2 <= num_cards
@@ -60,7 +60,7 @@ class Cardgame(AECEnv):
             for agent in self.possible_agents
         }
 
-    def reset(self, seed=None, options=None):
+    def reset(self, *, seed=None, options=None):
         np.random.seed(seed)
         self.winner = None
         self.agents = list(self.possible_agents)
@@ -82,8 +82,8 @@ class Cardgame(AECEnv):
         self.agent_selection = self.attacking_agent
         self.rewards = {agent: 0 for agent in self.agents}
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
-        self.terminations = {agent: False for agent in self.agents}
-        self.truncations = {agent: False for agent in self.agents}
+        self.terminateds = {agent: False for agent in self.agents}
+        self.truncateds = {agent: False for agent in self.agents}
         self.observations = {
             agent: {
                 "observations": None,
@@ -92,6 +92,9 @@ class Cardgame(AECEnv):
             for agent in self.agents
         }
         self.infos = {agent: {} for agent in self.agents}
+        state = self._update_agents_data()
+
+        return state[0], state[4]
 
     def observation_space(self, agent):
         return self.observation_spaces[agent]
@@ -99,41 +102,25 @@ class Cardgame(AECEnv):
     def action_space(self, agent):
         return self.action_spaces[agent]
 
-    def observe(self, agent):
-        self._update_agent_data(agent)
-        return dict(self.observations[agent])
-
-    def step(self, action):
-        # action None: Agent dropped or acknowledged previous term / trunc
-        # action 0: Agent passes turn
-        # action X @ [1..num_cards + 1]: Agent plays card with value X
-
+    def step(self, actions):
         self._clear_rewards()
-        agent = self.agent_selection
 
-        term = self.terminations[agent]
-        trunc = self.terminations[agent]
+        for agent, action in actions.items():
+            if agent != self.agent_selection:
+                continue
 
-        if (action is None or self.passing_action) and (term or trunc):
-            self._remove_agent(agent)
-            self.agent_selection = (
-                self.defending_agent
-                if agent == self.attacking_agent
-                else self.attacking_agent
-            )
-            return
+            if agent == self.attacking_agent:
+                self._handle_attack(agent, action)
+                next_active_player = self.defending_agent
+            else:
+                self._handle_defense(agent, action)
+                self._handle_rewards(agent)
+                self._end_turn()
+                next_active_player = self.attacking_agent
 
-        if agent == self.attacking_agent:
-            self._handle_attack(agent, action)
-            self._attack_reward(agent)
-            self.agent_selection = self.defending_agent
-        else:
-            self._handle_defense(agent, action)
-            self._defense_reward(agent)
-            self._end_turn()
-            self.agent_selection = self.attacking_agent
+        state = self._end_of_cycle(next_active_player)
 
-        self._accumulate_rewards()
+        return state
 
     def render(self):
         pass
@@ -141,32 +128,69 @@ class Cardgame(AECEnv):
     def close(self):
         pass
 
+    def state(self):
+        return np.array([])
+
     def _get_winner(self):
         return self.winner
 
-    def _update_agent_data(self, agent):
-        cards = self.agents_cards[agent]
-        obs = np.array([Status.Unknown] * self.num_cards)
+    def _end_of_cycle(self, next_active_player):
+        self._accumulate_rewards()
+        state = self._update_agents_data()
 
-        for card in self.discard:
-            obs[card] = Status.Discarded
+        for agent in list(self.agents):
+            if self.terminateds[agent] or self.truncateds[agent]:
+                self._remove_agent(agent)
 
-        for card in cards:
-            obs[card] = Status.MyCard
+        if len(self.agents) > 0:
+            self.agent_selection = (
+                next_active_player
+                if next_active_player in self.agents
+                else self.agents[0]
+            )
 
-        if self.attacking_card:
-            obs[self.attacking_card] = Status.InPlay
+        return state
 
-        if self.defending_card:
-            obs[self.defending_card] = Status.InPlay
+    def _update_agents_data(self):
+        for agent in self.agents:
+            cards = self.agents_cards[agent]
+            obs = np.array([Status.Unknown] * self.num_cards)
 
-        attack_card_value = self.attacking_card if self.attacking_card else -1
-        card_values = np.array([card for card in self.full_deck])
-        legal = (obs == Status.MyCard) & (card_values > attack_card_value)
-        mask = np.concatenate((legal, [1])).astype(np.int8)
+            for card in self.discard:
+                obs[card] = Status.Discarded
 
-        self.observations[agent]["observations"] = obs
-        self.observations[agent]["action_mask"] = mask
+            for card in cards:
+                obs[card] = Status.MyCard
+
+            if self.attacking_card:
+                obs[self.attacking_card] = Status.InPlay
+
+            if self.defending_card:
+                obs[self.defending_card] = Status.InPlay
+
+            attack_card_value = self.attacking_card if self.attacking_card else -1
+            card_values = np.array([card for card in self.full_deck])
+            legal = (obs == Status.MyCard) & (card_values > attack_card_value)
+
+            mask = np.concatenate((legal, [1])).astype(np.int8)
+
+            # Attacker must play a card
+            if agent == self.attacking_agent and np.any(legal):
+                mask[-1] = 0
+
+            if not any(mask):
+                assert False, f"no legal actions available to {agent}"
+
+            self.observations[agent]["observations"] = obs
+            self.observations[agent]["action_mask"] = mask
+
+        return (
+            deepcopy(self.observations),
+            deepcopy(self.rewards),
+            deepcopy(self.terminateds),
+            deepcopy(self.truncateds),
+            deepcopy(self.infos),
+        )
 
     def _handle_attack(self, agent, action):
         if action is None or action == self.passing_action:
@@ -208,25 +232,15 @@ class Cardgame(AECEnv):
             self.attacking_agent,
         )
 
-    # Reward, termination, truncation after attack action
-    def _attack_reward(self, agent):
-        atk_reward, atk_terminated, atk_truncated = 0, False, False
-
-        # Attacker failed to play a card
-        if self.attacking_card is None:
-            atk_terminated = True
-            self.winner = None
-
-        self.rewards[self.attacking_agent] = atk_reward
-        self.terminations[self.attacking_agent] = atk_terminated
-        self.truncations[self.attacking_agent] = atk_truncated
-
-    # Reward, termination, truncation after defense action
-    def _defense_reward(self, agent):
+    # Reward, termination, truncation after full turn
+    def _handle_rewards(self, agent):
         atk_reward, atk_terminated, atk_truncated = 0, False, False
         def_reward, def_terminated, def_truncated = 0, False, False
 
-        if self.attacking_card is not None and self.defending_card is None:
+        if self.attacking_card is None:
+            assert False, "attacker failed to play a card"
+
+        elif self.attacking_card is not None and self.defending_card is None:
             atk_reward = +1
             atk_terminated = True
             def_reward = -1
@@ -242,23 +256,31 @@ class Cardgame(AECEnv):
             self.winner = None
 
         self.rewards[self.attacking_agent] = atk_reward
-        self.terminations[self.attacking_agent] = atk_terminated
-        self.truncations[self.attacking_agent] = atk_truncated
+        self.terminateds[self.attacking_agent] = atk_terminated
+        self.truncateds[self.attacking_agent] = atk_truncated
 
         self.rewards[self.defending_agent] = def_reward
-        self.terminations[self.defending_agent] = def_terminated
-        self.truncations[self.defending_agent] = def_truncated
+        self.terminateds[self.defending_agent] = def_terminated
+        self.truncateds[self.defending_agent] = def_truncated
 
     def _remove_agent(self, agent):
         self.agents.remove(agent)
         self.rewards.pop(agent)
         self._cumulative_rewards.pop(agent)
-        self.terminations.pop(agent)
-        self.truncations.pop(agent)
+        self.terminateds.pop(agent)
+        self.truncateds.pop(agent)
         self.observations.pop(agent)
         self.infos.pop(agent)
+
+    def _clear_rewards(self):
+        for agent in self.agents:
+            self.rewards[agent] = 0
+
+    def _accumulate_rewards(self):
+        for agent in self.agents:
+            self._cumulative_rewards[agent] += self.rewards[agent]
 
 
 if __name__ == "__main__":
     env = Cardgame()
-    api_test(env, verbose_progress=True)
+    parallel_api_test(env)
