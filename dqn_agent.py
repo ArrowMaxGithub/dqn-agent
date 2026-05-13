@@ -15,7 +15,6 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.tune.registry import register_env
 
 from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.policy.sample_batch import SampleBatch
 
 from par_env import Cardgame
 
@@ -35,10 +34,11 @@ register_env("custom-cardgame-v1", env_creator)
 
 
 class DQNAgent:
-    def __init__(self, checkpoint_path):
+    def __init__(self, checkpoint_path, passing_action):
         self.algo = Algorithm.from_checkpoint(checkpoint_path)
         self.module = self.algo.get_module("p0")
         self.module.eval()
+        self.passing_action = passing_action
 
     def get_action(self, obs_dict, force_exploitation=False):
         obs_tensor = (
@@ -49,7 +49,6 @@ class DQNAgent:
         )
 
         nested_obs_dict = {"observations": obs_tensor, "action_mask": mask_tensor}
-
         batch_input = {"obs": nested_obs_dict}
 
         with torch.no_grad():
@@ -67,8 +66,9 @@ class DQNAgent:
 class MaskedRLModule(TorchRLModule):
     def setup(self):
         obs_shape = self.config.observation_space["observations"].shape
+        num_states = self.config.observation_space["observations"].nvec.max()
         num_outputs = self.config.action_space.n
-        input_dim = obs_shape[0] * 4
+        input_dim = obs_shape[0] * num_states
 
         self.net = nn.Sequential(
             nn.Linear(input_dim, 256),
@@ -97,8 +97,9 @@ class MaskedRLModule(TorchRLModule):
         obs_batch = batch[obs_key]
         obs = obs_batch["observations"]
         mask = obs_batch["action_mask"]
+        num_states = self.config.observation_space["observations"].nvec.max()
 
-        obs_one_hot = F.one_hot(obs.long(), num_classes=4).float()
+        obs_one_hot = F.one_hot(obs.long(), num_classes=num_states).float()
         flat_obs = obs_one_hot.view(obs.shape[0], -1)
         logits = self.net(flat_obs)
 
@@ -132,13 +133,19 @@ if __name__ == "__main__":
                 model_config={"action_dist_class": TorchCategorical},
             )
         )
+        .env_runners(num_env_runners=16)
         .training(
             replay_buffer_config={
                 "type": "MultiAgentEpisodeReplayBuffer",
+                "capacity": 50000,
             },
+            lr=0.001,
+            train_batch_size=256,
         )
     )
 
     algo = config.build()
-    algo.train()
+    for i in range(16):
+        result = algo.train()
+        print(f"Iteration: {i}")
     algo.save_to_path("/home/max/dev/dqn-agent/checkpoints")

@@ -20,7 +20,7 @@ def main():
     learning_rate = 0.001
     epochs = 106
     episodes_per_epoch = 10_000
-    episodes_test = 1_000
+    episodes_test = 10_000
     start_epsilon = 1.0
     epsilon_decay = start_epsilon / (epochs * episodes_per_epoch) / 2
     final_epsilon = 0.1
@@ -38,7 +38,7 @@ def main():
             epsilon_decay,
             final_epsilon,
         ),
-        DQNAgent("/home/max/dev/dqn-agent/checkpoints"),
+        DQNAgent("/home/max/dev/dqn-agent/checkpoints", env.passing_action),
         RandomAgent(env.passing_action),
     ]
 
@@ -46,12 +46,12 @@ def main():
     pairings = ((0, 1), (0, 2), (1, 2), (2, 2))
     print_cross_results(cross(env, agents, pairings, episodes_test))
 
-    # for epoch in range(epochs):
-    #     print(f"Starting epoch {epoch} | after {episodes_per_epoch * epoch} iterations")
-    #     train(agents, env, episodes_per_epoch)
-    #     print(f"Results after epoch {epoch}")
-    #     pairings = ((0, 1), (0, 2))
-    #     print_cross_results(cross(env, agents, pairings, episodes_test))
+    for epoch in range(epochs):
+        print(f"Starting epoch {epoch} | after {episodes_per_epoch * epoch} iterations")
+        train(agents, env, episodes_per_epoch)
+        print(f"Results after epoch {epoch}")
+        pairings = ((0, 1), (0, 2))
+        print_cross_results(cross(env, agents, pairings, episodes_test))
 
 
 if __name__ == "__main__":

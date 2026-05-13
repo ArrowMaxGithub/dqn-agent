@@ -36,12 +36,6 @@ class QAgent:
 
         illegal_mask = (1 - mask) * self.illegal_mask
 
-        if not any(mask[:-1]):
-            return self.passing_action
-        else:
-            mask[-1] = 0
-            illegal_mask[-1] = self.illegal_mask
-
         if np.random.random() < self.epsilon and not force_exploitation:
             legal_actions = np.where(mask == 1)[0]
             return np.random.choice(legal_actions)

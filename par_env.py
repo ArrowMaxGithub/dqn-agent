@@ -170,7 +170,15 @@ class Cardgame(ParallelEnv):
             attack_card_value = self.attacking_card if self.attacking_card else -1
             card_values = np.array([card for card in self.full_deck])
             legal = (obs == Status.MyCard) & (card_values > attack_card_value)
+
             mask = np.concatenate((legal, [1])).astype(np.int8)
+
+            # Attacker must play a card
+            if agent == self.attacking_agent and np.any(legal):
+                mask[-1] = 0
+
+            if not any(mask):
+                assert False, f"no legal actions available to {agent}"
 
             self.observations[agent]["observations"] = obs
             self.observations[agent]["action_mask"] = mask
