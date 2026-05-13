@@ -14,7 +14,7 @@ from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.tune.registry import register_env
 
-from par_env import Cardgame
+from env import Cardgame
 
 
 def env_creator(cfg):
@@ -67,7 +67,7 @@ class DQNAgent:
                 )
             )
             .resources(num_gpus=1)
-            .env_runners(num_env_runners=4, num_envs_per_env_runner=4)
+            .env_runners(num_env_runners=16, num_envs_per_env_runner=4)
             .training(
                 replay_buffer_config={
                     "type": "MultiAgentEpisodeReplayBuffer",

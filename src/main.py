@@ -1,5 +1,3 @@
-import torch
-
 from dqn_agent import DQNAgent
 from env import Cardgame
 from q_agent import QAgent
@@ -7,16 +5,20 @@ from random_agent import RandomAgent
 from test import cross
 from train import train
 
+import torch
+
 
 def main():
-    if not torch.cuda.is_available():
-        assert False, "GPU is not supported by torch"
+    if torch.cuda.is_available():
+        print("GPU supported")
+    else:
+        assert False, "No GPU support"
 
     epochs = 4
     episodes_per_epoch = 2048
     episodes_test = 1_000
     n_steps_total = epochs * episodes_per_epoch
-    train_batch_size = 256
+    train_batch_size = 2048
 
     num_cards = 8
     num_hand_cards = 4

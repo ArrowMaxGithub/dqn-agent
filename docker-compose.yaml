@@ -1,0 +1,20 @@
+services:
+  dqn-agent:
+    image: dqn-agent:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    group_add:
+      - 983
+      - 987
+    user: "0:0"
+    volumes:
+      - .:/app
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    environment:
+      - PATH="/opt/venv/bin:$PATH"
+      - PYTHONPATH=/app/src
+      - HSA_OVERRIDE_GFX_VERSION=10.3.0
+    shm_size: '16gb'

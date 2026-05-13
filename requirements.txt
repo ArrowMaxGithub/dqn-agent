@@ -1,0 +1,9 @@
+dm-tree
+lz4
+opencv-python
+pettingzoo
+ray[rllib,tune]
+scipy
+supersuit
+tqdm
+numpy
