@@ -15,12 +15,12 @@ def main():
     else:
         assert False, "No GPU support"
 
-    epochs = 5
-    episodes_per_epoch = 4096
+    epochs = 10
+    episodes_per_epoch = 1024 * 8
     episodes_test = 1_000
     episodes_final = 100_000
     n_steps_total = epochs * episodes_per_epoch
-    train_batch_size = episodes_per_epoch
+    train_batch_size = 1024
 
     num_cards = 32
     num_hand_cards = 8
@@ -44,8 +44,8 @@ def main():
             learning_rate=0.001,
             n_steps_total=n_steps_total,
             train_batch_size=train_batch_size,
-            num_env_runners=16,
-            num_envs_per_env_runner=32,
+            num_env_runners=8,
+            num_envs_per_env_runner=16,
             initial_epsilon=1.0,
             final_epsilon=0.1,
             dueling=False,
