@@ -43,7 +43,8 @@ class DurakEnv(ParallelEnv):
             agent: gym.spaces.Dict(
                 {
                     "observations": gym.spaces.MultiDiscrete(
-                        [len(Status)] * (self.num_cards + 1)  # All cards plus trump
+                        [len(Status)]
+                        * (self.num_cards + 1)  # All cards plus trump color
                     ),
                     "action_mask": gym.spaces.MultiBinary(self.num_cards + 1),
                 }
@@ -59,9 +60,6 @@ class DurakEnv(ParallelEnv):
         np.random.seed(seed)
         self.gamestate.setup(2)
         self.agents = list(self.possible_agents)
-        self.agent_obs = {
-            agent: np.array([Status.Unknown] * self.num_cards) for agent in self.agents
-        }
         self.trump_card = self.gamestate.draw_pile[0]
         self.tracked_cards = {self.trump_card}
         self.agent_selection = self.agents[self.gamestate._find_first_attacker()]
@@ -73,8 +71,10 @@ class DurakEnv(ParallelEnv):
         self.truncateds = {agent: False for agent in self.agents}
         self.observations = {
             agent: {
-                "observations": None,
-                "action_mask": None,
+                "observations": np.array(
+                    [Status.Unknown] * (self.num_cards + 1), dtype=np.int8
+                ),
+                "action_mask": np.zeros(self.num_cards + 1, dtype=np.int8),
             }
             for agent in self.agents
         }
@@ -210,15 +210,21 @@ class DurakEnv(ParallelEnv):
         self.phase = Phase.Attack
 
     def _get_winner(self):
-        return self.gamestate.winner_index()
+        winner_index = self.gamestate.winner_index()
+        if winner_index is not None:
+            return self.possible_agents[winner_index]
+        else:
+            return None
 
     def _end_of_cycle(self):
         winner = self._get_winner()
 
         if winner is not None:
-            self.print(f"{self.agents[winner]} won!")
-            winning_agent = self.agents[winner]
-            losing_agent = self.agents[(winner + 1) % 2]
+            self.print(f"{winner} won!")
+            winning_agent = winner
+            losing_agent = (
+                self.agents[1] if winner == self.agents[0] else self.agents[0]
+            )
 
             self.rewards[winning_agent] = 1
             self.terminateds[winning_agent] = True
@@ -258,11 +264,19 @@ class DurakEnv(ParallelEnv):
     def _update_agent_data(self, i, agent):
         cards = self.gamestate.players[i].hand.cards
         opponent_cards = self.gamestate.players[(i + 1) % 2].hand.cards
-        obs = self.agent_obs[agent]
+        obs = self.observations[agent]["observations"]
+
+        # Set trump color
+        obs[-1] = np.int8(self.trump_card.color.value)
 
         # Set player hand cards - may yet contain untracked cards
         indices = [self._get_index_from_card(card) for card in cards]
         obs[indices] = Status.MyCard
+
+        # Unzip in-play cards
+        pairs = self.gamestate.table
+        attacks = [pair.attack for pair in pairs]
+        defenses = [pair.defense for pair in pairs]
 
         # Set already shown cards
         for card in self.tracked_cards:
@@ -272,17 +286,13 @@ class DurakEnv(ParallelEnv):
             elif card in cards:
                 obs[index] = Status.MyCard
             elif card == self.trump_card:
-                obs[index] = Status.InDeck  # As long as the trump card was not drawn
+                obs[index] = Status.InDeck  # While the trump card is not drawn
+            elif card in attacks:
+                obs[index] = Status.Attack
+            elif card in defenses:
+                obs[index] = Status.Defense
             else:
                 obs[index] = Status.Discarded  # Gets overriden for in-play cards
-
-        # Set in-play cards
-        for pair in self.gamestate.table:
-            index = self._get_index_from_card(pair.attack)
-            obs[index] = Status.Attack
-            if pair.defense:
-                index = self._get_index_from_card(pair.defense)
-                obs[index] = Status.Defense
 
         # obs now contains all available card information for 'agent'
         # The only unknown cards should be the cards in the deck and any card the opponent has not shown yet

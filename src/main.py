@@ -11,15 +11,15 @@ from train import train
 
 
 def main():
-    # if torch.cuda.is_available():
-    #     print("GPU supported")
-    # else:
-    #     assert False, "No GPU support"
+    if torch.cuda.is_available():
+        print("GPU supported")
+    else:
+        print("NO GPU SUPPORT")
 
     epochs = 5
     episodes_per_epoch = 100
-    episodes_test = 10
-    episodes_final = 10
+    episodes_test = 100
+    episodes_final = 100
     n_steps_total = epochs * episodes_per_epoch
     train_batch_size = 100
 
