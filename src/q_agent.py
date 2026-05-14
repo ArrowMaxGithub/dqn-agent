@@ -18,7 +18,7 @@ class QAgent:
         self.q_values = {}
         self.lr = learning_rate
         self.epsilon = initial_epsilon
-        self.epsilon_decay = (self.epsilon - final_epsilon) / 2 * n_steps_total
+        self.epsilon_decay = (self.epsilon - final_epsilon) / (2 * n_steps_total)
         self.final_epsilon = final_epsilon
         self.discount_factor = discount_factor
         self.illegal_mask = illegal_mask
@@ -40,7 +40,9 @@ class QAgent:
             legal_actions = np.where(mask == 1)[0]
             return np.random.choice(legal_actions)
         else:
-            return int(np.argmax(q_values + illegal_mask))
+            max_q = np.max(q_values + illegal_mask)
+            equal = np.where((q_values + illegal_mask) == max_q)[0]
+            return int(np.random.choice(equal))
 
     def update(
         self,

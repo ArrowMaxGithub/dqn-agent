@@ -265,6 +265,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "debugpy" },
     { name = "dm-tree" },
+    { name = "gymnasium" },
     { name = "lz4" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -281,6 +282,7 @@ dependencies = [
 requires-dist = [
     { name = "debugpy", specifier = ">=1.8.20" },
     { name = "dm-tree", specifier = ">=0.1.10" },
+    { name = "gymnasium", specifier = ">=1.2.2" },
     { name = "lz4", specifier = ">=4.4.5" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "opencv-python", specifier = ">=4.13.0.92" },
