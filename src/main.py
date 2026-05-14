@@ -1,8 +1,9 @@
 import torch
+
 from prettytable import PrettyTable
 
 from dqn_agent import DQNAgent
-from env import Cardgame
+from durak_env import DurakEnv
 from q_agent import QAgent
 from random_agent import RandomAgent
 from test import cross
@@ -10,22 +11,19 @@ from train import train
 
 
 def main():
-    if torch.cuda.is_available():
-        print("GPU supported")
-    else:
-        assert False, "No GPU support"
+    # if torch.cuda.is_available():
+    #     print("GPU supported")
+    # else:
+    #     assert False, "No GPU support"
 
-    epochs = 10
-    episodes_per_epoch = 1024 * 8
-    episodes_test = 1_000
-    episodes_final = 100_000
+    epochs = 5
+    episodes_per_epoch = 100
+    episodes_test = 10
+    episodes_final = 10
     n_steps_total = epochs * episodes_per_epoch
-    train_batch_size = 1024
+    train_batch_size = 100
 
-    num_cards = 32
-    num_hand_cards = 8
-
-    env = Cardgame(num_cards=num_cards, num_hand_cards=num_hand_cards)
+    env = DurakEnv()
     agents = [
         QAgent(
             passing_action=env.passing_action,
@@ -39,8 +37,6 @@ def main():
         ),
         DQNAgent(
             passing_action=env.passing_action,
-            num_cards=num_cards,
-            num_hand_cards=num_hand_cards,
             learning_rate=0.001,
             n_steps_total=n_steps_total,
             train_batch_size=train_batch_size,

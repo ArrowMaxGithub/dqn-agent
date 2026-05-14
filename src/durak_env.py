@@ -17,12 +17,13 @@ class Status(IntEnum):
     OpponentCard = 2
     Attack = 3
     Defense = 4
-    Discarded = 5
+    InDeck = 5
+    Discarded = 6
 
 
 class Phase(Enum):
     Attack = 0
-    Defend = 1
+    Defense = 1
     ThrowIn = 2
     Take = 3
 
@@ -31,6 +32,7 @@ class DurakEnv(ParallelEnv):
     metadata = {"render_modes": [], "name": "durak_card_game_v0"}
 
     def __init__(self):
+        self.verbose = False
         self.gamestate = GameState()
         self.gamestate.setup(2)
         self.num_cards = len(CardColor) * len(CardValue)
@@ -60,9 +62,9 @@ class DurakEnv(ParallelEnv):
         self.agent_obs = {
             agent: np.array([Status.Unknown] * self.num_cards) for agent in self.agents
         }
-        trump_card = self.gamestate.draw_pile[0]
-        self.tracked_cards = {trump_card}
-        self.agent_selection = self.gamestate._find_first_attacker()
+        self.trump_card = self.gamestate.draw_pile[0]
+        self.tracked_cards = {self.trump_card}
+        self.agent_selection = self.agents[self.gamestate._find_first_attacker()]
         self.next_player = self.agent_selection
         self.phase = Phase.Attack
         self.rewards = {agent: 0 for agent in self.agents}
@@ -79,6 +81,8 @@ class DurakEnv(ParallelEnv):
         self.infos = {agent: {} for agent in self.agents}
         state = self._update_agents_data()
 
+        self.turn_count = 0
+
         return state[0], state[4]
 
     def observation_space(self, agent):
@@ -88,6 +92,10 @@ class DurakEnv(ParallelEnv):
         return self.action_spaces[agent]
 
     def step(self, actions):
+        self.print(
+            f"turn: {self.turn_count} | phase: {self.phase} | active: {self.agent_selection} | {len(self.gamestate.players[0].hand.cards)} | {len(self.gamestate.players[1].hand.cards)} | {len(self.gamestate.draw_pile)}"
+        )
+
         self._clear_rewards()
 
         for agent, action in actions.items():
@@ -96,13 +104,13 @@ class DurakEnv(ParallelEnv):
 
             match self.phase:
                 case Phase.Attack:
-                    self._handle_attack(agent, action)
+                    self._handle_attack(action)
                 case Phase.Defense:
-                    self._handle_defense(agent, action)
+                    self._handle_defense(action)
                 case Phase.ThrowIn:
-                    self._handle_throw_in(agent, action)
+                    self._handle_throw_in(action)
                 case Phase.Take:
-                    self._handle_take(agent, action)
+                    self._handle_take()
 
         return self._end_of_cycle()
 
@@ -116,59 +124,87 @@ class DurakEnv(ParallelEnv):
         return np.array([])
 
     def _handle_attack(self, action):
+        attacker = self.gamestate.players[self.gamestate.attacker]
         if action is None or action == self.passing_action:
             self.next_player = self.agents[self.gamestate.defender]
             self.phase = Phase.Attack
+            self.print(f"{attacker.name} passed during attack")
+            self.print("ending round, swapping roles")
+            self.print("-" * 16)
+            self.gamestate.discard_table_cards()
+            self.gamestate.refill_hands()
+            self.gamestate.swap_roles()
             return
 
-        attacker = self.gamestate.players[self.gamestate.attacker]
         card = self._get_card_from_index(action)
 
-        assert card in attacker.hand
+        assert card in attacker.hand.cards
+        assert card in self.gamestate.LegalAttackCards(attacker.hand.cards)
+
+        self.print(f"{attacker.name} attacked with {card}")
 
         attacker.hand.cards.remove(card)
         self.gamestate.add_attack_card(card)
+        self.tracked_cards.add(card)
 
         self.next_player = self.agents[self.gamestate.defender]
-        self.phase = Phase.Defend
+        self.phase = Phase.Defense
 
     def _handle_throw_in(self, action):
+        attacker = self.gamestate.players[self.gamestate.attacker]
         if action is None or action == self.passing_action:
             self.next_player = self.agents[self.gamestate.defender]
             self.phase = Phase.Take
+            self.print(f"{attacker.name} passed during throw-in")
             return
 
-        attacker = self.gamestate.players[self.gamestate.defender]
         card = self._get_card_from_index(action)
 
-        assert card in attacker.hand
+        assert card in attacker.hand.cards
+        assert card in self.gamestate.LegalAttackCards(attacker.hand.cards)
+
+        self.print(f"{attacker.name} thrown in {card}")
 
         attacker.hand.cards.remove(card)
         self.gamestate.add_attack_card(card)
+        self.tracked_cards.add(card)
 
         self.next_player = self.agents[self.gamestate.attacker]
         self.phase = Phase.ThrowIn
 
     def _handle_defense(self, action):
+        defender = self.gamestate.players[self.gamestate.defender]
         if action is None or action == self.passing_action:
             self.next_player = self.agents[self.gamestate.attacker]
             self.phase = Phase.ThrowIn
+            self.print(f"{defender.name} passed during defense")
             return
 
-        defender = self.gamestate.players[self.gamestate.defender]
         card = self._get_card_from_index(action)
 
-        assert card in defender.hand
+        assert card in defender.hand.cards
+        assert card in self.gamestate.LegalDefenseCards(defender.hand.cards)
+
+        self.print(f"{defender.name} defended with {card}")
 
         defender.hand.cards.remove(card)
         self.gamestate.add_defense_card(card)
+        self.tracked_cards.add(card)
 
         self.next_player = self.agents[self.gamestate.attacker]
         self.phase = Phase.Attack
 
     def _handle_take(self):
         defender = self.gamestate.players[self.gamestate.defender]
-        defender.hand.cards.extend(self.gamestate.collect_table_cards())
+        to_take = self.gamestate.collect_table_cards()
+
+        self.print(f"{defender.name} took {to_take}")
+        defender.hand.cards.extend(to_take)
+
+        self.print("ending round, keeping roles")
+        self.print("-" * 16)
+
+        self.gamestate.refill_hands()
 
         self.next_player = self.agents[self.gamestate.attacker]
         self.phase = Phase.Attack
@@ -179,7 +215,8 @@ class DurakEnv(ParallelEnv):
     def _end_of_cycle(self):
         winner = self._get_winner()
 
-        if winner:
+        if winner is not None:
+            self.print(f"{self.agents[winner]} won!")
             winning_agent = self.agents[winner]
             losing_agent = self.agents[(winner + 1) % 2]
 
@@ -197,6 +234,7 @@ class DurakEnv(ParallelEnv):
                 self._remove_agent(agent)
 
         self.agent_selection = self.next_player
+        self.turn_count += 1
 
         return state
 
@@ -233,6 +271,8 @@ class DurakEnv(ParallelEnv):
                 obs[index] = Status.OpponentCard
             elif card in cards:
                 obs[index] = Status.MyCard
+            elif card == self.trump_card:
+                obs[index] = Status.InDeck  # As long as the trump card was not drawn
             else:
                 obs[index] = Status.Discarded  # Gets overriden for in-play cards
 
@@ -270,6 +310,11 @@ class DurakEnv(ParallelEnv):
         if not any(action_mask):
             raise ValueError(f"No legal actions available to {agent}")
 
+        for index, mask in enumerate(action_mask[:-1]):
+            card = self._get_card_from_index(index)
+            if mask == 1:
+                assert card in cards
+
         self.observations[agent]["observations"] = obs
         self.observations[agent]["action_mask"] = action_mask
 
@@ -301,6 +346,10 @@ class DurakEnv(ParallelEnv):
         color = CardColor(index // len(CardValue))
         value = CardValue(index % len(CardValue) + 6)
         return Card(value=value, color=color)
+
+    def print(self, msg):
+        if self.verbose:
+            print(msg)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,6 @@ import random
 
 
 # Farben (Suits)
-@dataclass(frozen=True)
 class CardColor(Enum):
     SPADES = 0
     CLUBS = 1
@@ -13,7 +12,6 @@ class CardColor(Enum):
 
 
 # Werte (Ranks)
-@dataclass(frozen=True)
 class CardValue(Enum):
     SIX = 6
     SEVEN = 7
@@ -31,6 +29,9 @@ class CardValue(Enum):
 class Card:
     value: CardValue
     color: CardColor
+
+    def __repr__(self):
+        return f"{self.value.name} {self.color.name}"
 
 
 # default_factory=list = „mach mir jedes Mal eine neue leere Liste“,

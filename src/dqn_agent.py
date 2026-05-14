@@ -14,15 +14,13 @@ from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.tune.registry import register_env
 
-from env import Cardgame
+from durak_env import DurakEnv
 
 
 class DQNAgent:
     def __init__(
         self,
         passing_action,
-        num_cards,
-        num_hand_cards,
         learning_rate,
         n_steps_total,
         train_batch_size,
@@ -34,13 +32,12 @@ class DQNAgent:
         double_q,
     ):
         def env_creator(cfg):
-            return ParallelPettingZooEnv(
-                Cardgame(num_cards=num_cards, num_hand_cards=num_hand_cards)
-            )
+            return ParallelPettingZooEnv(DurakEnv())
 
         tmp_env = env_creator(None)
-        obs_space = tmp_env.observation_space["agent_0"]
-        act_space = tmp_env.action_space["agent_0"]
+        player_id = tmp_env.possible_agents[0]
+        obs_space = tmp_env.observation_space[player_id]
+        act_space = tmp_env.action_space[player_id]
 
         register_env(
             "custom-cardgame-v1",
@@ -186,6 +183,7 @@ class MaskedRLModule(TorchRLModule):
 
 def bench():
     import time
+
     from tqdm import tqdm
 
     epochs = 5
@@ -194,7 +192,7 @@ def bench():
 
     num_cards = 32
     num_hand_cards = 8
-    env = Cardgame(num_cards=num_cards, num_hand_cards=num_hand_cards)
+    env = DurakEnv()
 
     agent = DQNAgent(
         passing_action=env.passing_action,
