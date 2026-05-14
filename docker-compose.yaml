@@ -20,4 +20,3 @@ services:
       - PYTHONPATH=/app/src
       - HSA_OVERRIDE_GFX_VERSION=10.3.0
     shm_size: '16gb'
-    # command: [ "tail", "-f", "/dev/null" ]

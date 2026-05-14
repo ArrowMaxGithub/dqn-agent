@@ -26,6 +26,8 @@ class DQNAgent:
         learning_rate,
         n_steps_total,
         train_batch_size,
+        num_env_runners,
+        num_envs_per_env_runner,
         initial_epsilon,
         final_epsilon,
         dueling,
@@ -71,7 +73,10 @@ class DQNAgent:
                 )
             )
             .resources(num_gpus=1)
-            .env_runners(num_env_runners=16, num_envs_per_env_runner=4)
+            .env_runners(
+                num_env_runners=num_env_runners,
+                num_envs_per_env_runner=num_envs_per_env_runner,
+            )
             .training(
                 replay_buffer_config={
                     "type": "MultiAgentEpisodeReplayBuffer",
@@ -99,7 +104,7 @@ class DQNAgent:
             output = self.module.forward_inference(batch_input)
             return torch.argmax(output[Columns.ACTION_DIST_INPUTS], dim=-1).item()
 
-    def update(self, obs, action, reward, term, next_obs):
+    def update(self, obs=None, action=None, reward=None, term=None, next_obs=None):
         self.algo.train()
 
     def get_label(self):
@@ -179,12 +184,12 @@ class MaskedRLModule(TorchRLModule):
         }
 
 
-if __name__ == "__name__":
+def bench():
     import time
-    import tqdm
+    from tqdm import tqdm
 
-    epochs = 10
-    train_batch_size = 4096
+    epochs = 5
+    train_batch_size = 16384
     n_steps_total = epochs * train_batch_size
 
     num_cards = 32
@@ -198,17 +203,22 @@ if __name__ == "__name__":
         learning_rate=0.001,
         n_steps_total=n_steps_total,
         train_batch_size=train_batch_size,
+        num_env_runners=16,
+        num_envs_per_env_runner=32,
         initial_epsilon=1.0,
         final_epsilon=0.1,
         dueling=False,
         double_q=False,
     )
 
-    start = time.perf_counter_ns
+    start = time.perf_counter_ns()
     for e in tqdm(range(epochs)):
         agent.update()
-    end = time.perf_counter_ns
+    end = time.perf_counter_ns()
     delta = end - start
-    delta_ms = delta / 1000 / 1000
-    avg_ms = delta / epochs
-    print(f"Total time: {delta_ms:.2f}ms | Avg: {avg_ms:.2f}ms")
+    delta_s = delta / 1000 / 1000 / 1000
+    avg_s = delta_s / epochs
+    avg_ms_per_step = delta / 1000 / 1000 / train_batch_size
+    print(
+        f"Total time: {delta_s:.2f}s | Avg: {avg_s:.2f}s | Avg-per-step: {avg_ms_per_step:.2f}ms"
+    )

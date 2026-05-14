@@ -1,3 +1,6 @@
+from tqdm import tqdm
+
+
 def test(env, agents, n_episodes) -> (float, float, float):
     assert len(agents) == len(env.possible_agents)
 
@@ -11,7 +14,7 @@ def test(env, agents, n_episodes) -> (float, float, float):
     agent_0_id = env.possible_agents[0]
     agent_1_id = env.possible_agents[1]
 
-    for _ in range(n_episodes):
+    for _ in tqdm(range(n_episodes)):
         obss, infos = env.reset()
 
         while env.agents:
