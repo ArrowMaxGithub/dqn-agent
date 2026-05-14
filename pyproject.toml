@@ -1,0 +1,18 @@
+[project]
+name = "dqn-agent"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "debugpy>=1.8.20",
+    "dm-tree>=0.1.10",
+    "lz4>=4.4.5",
+    "numpy>=2.2.6",
+    "opencv-python>=4.13.0.92",
+    "pettingzoo>=1.26.1",
+    "prettytable>=3.17.0",
+    "ray[rllib,tune]>=2.55.1",
+    "scipy>=1.15.3",
+    "tqdm>=4.67.3",
+]

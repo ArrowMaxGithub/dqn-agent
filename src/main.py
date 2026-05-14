@@ -15,11 +15,12 @@ def main():
     else:
         assert False, "No GPU support"
 
-    epochs = 4
-    episodes_per_epoch = 2048
+    epochs = 50
+    episodes_per_epoch = 4096
     episodes_test = 1_000
+    episodes_final = 100_000
     n_steps_total = epochs * episodes_per_epoch
-    train_batch_size = 2048
+    train_batch_size = 4096
 
     num_cards = 32
     num_hand_cards = 8
@@ -70,6 +71,9 @@ def main():
 
         print(f"Results after epoch {epoch}")
         print_cross_results(cross(env, agents, test_pairings, episodes_test))
+
+    print("Trained agents")
+    print_cross_results(cross(env, agents, full_pairings, episodes_final))
 
 
 def print_cross_results(results):

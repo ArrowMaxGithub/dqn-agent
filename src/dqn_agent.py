@@ -177,3 +177,38 @@ class MaskedRLModule(TorchRLModule):
             QF_PREDS: masked_q_values,
             Columns.ACTION_DIST_INPUTS: masked_q_values,
         }
+
+
+if __name__ == "__name__":
+    import time
+    import tqdm
+
+    epochs = 10
+    train_batch_size = 4096
+    n_steps_total = epochs * train_batch_size
+
+    num_cards = 32
+    num_hand_cards = 8
+    env = Cardgame(num_cards=num_cards, num_hand_cards=num_hand_cards)
+
+    agent = DQNAgent(
+        passing_action=env.passing_action,
+        num_cards=num_cards,
+        num_hand_cards=num_hand_cards,
+        learning_rate=0.001,
+        n_steps_total=n_steps_total,
+        train_batch_size=train_batch_size,
+        initial_epsilon=1.0,
+        final_epsilon=0.1,
+        dueling=False,
+        double_q=False,
+    )
+
+    start = time.perf_counter_ns
+    for e in tqdm(range(epochs)):
+        agent.update()
+    end = time.perf_counter_ns
+    delta = end - start
+    delta_ms = delta / 1000 / 1000
+    avg_ms = delta / epochs
+    print(f"Total time: {delta_ms:.2f}ms | Avg: {avg_ms:.2f}ms")

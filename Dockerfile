@@ -8,4 +8,4 @@ RUN pip install -r requirements.txt
 
 COPY /src /src
 
-CMD ["/opt/venv/bin/python", "src/main.py"]
+CMD ["/opt/venv/bin/python", "src/main.py"] 
