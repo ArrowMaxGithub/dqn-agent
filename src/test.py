@@ -1,7 +1,8 @@
 from tqdm import tqdm
 
 
-def test(env, agents, n_episodes) -> (float, float, float):
+def test(env_factory, agents, n_episodes) -> (float, float, float):
+    env = env_factory()
     assert len(agents) == len(env.possible_agents)
 
     wins = 0
@@ -42,14 +43,14 @@ def test(env, agents, n_episodes) -> (float, float, float):
     )
 
 
-def cross(env, agents, pairings, n_episodes):
+def cross(env_factory, agents, pairings, n_episodes):
     results = {}
 
     for a0, a1 in pairings:
         agent_0 = agents[a0]
         agent_1 = agents[a1]
         results[(agent_0.get_label(), agent_1.get_label())] = test(
-            env, (agent_0, agent_1), n_episodes
+            env_factory, (agent_0, agent_1), n_episodes
         )
 
     return results

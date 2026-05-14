@@ -187,17 +187,13 @@ def bench():
     from tqdm import tqdm
 
     epochs = 5
-    train_batch_size = 16384
+    train_batch_size = 1024
     n_steps_total = epochs * train_batch_size
 
-    num_cards = 32
-    num_hand_cards = 8
     env = DurakEnv()
 
     agent = DQNAgent(
         passing_action=env.passing_action,
-        num_cards=num_cards,
-        num_hand_cards=num_hand_cards,
         learning_rate=0.001,
         n_steps_total=n_steps_total,
         train_batch_size=train_batch_size,
