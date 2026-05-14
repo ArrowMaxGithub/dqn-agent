@@ -1,6 +1,6 @@
 # N cards: (1 to N] same-suit
 # 2 players
-# 2 cards are dealt per player at the start of the game.
+# X < N / 2 cards are dealt per player at the start of the game.
 
 # Rounds:
 # Attacking player plays a card.
@@ -8,7 +8,7 @@
 # Defender loses when a played attack card cannot be defended.
 # Game ends in a draw if both players hold no cards.
 
-# ActionSpace: Discrete[N + 1] = Play one of the N cards or Pass(None) - Pass is Action[0]
+# ActionSpace: Discrete[N + 1] = Play one of the N cards or Pass(None) - Pass is Action[N]
 # ObservationSpace: MultiDiscrete[N, 4] = N cards with 4 one of possible states:
 #   0: Unknown - Card might be in the deck or in opponent's hand
 #   1: My Card
@@ -237,7 +237,15 @@ class Cardgame(ParallelEnv):
         atk_reward, atk_terminated, atk_truncated = 0, False, False
         def_reward, def_terminated, def_truncated = 0, False, False
 
-        if self.attacking_card is None:
+        # Neither player has any cards left => Draw, small reward for both
+        if all(len(cards) == 0 for cards in self.agents_cards.values()):
+            atk_reward = 0.0
+            atk_terminated = True
+            def_reward = 0.0
+            def_terminated = True
+            self.winner = None
+
+        elif self.attacking_card is None:
             assert False, "attacker failed to play a card"
 
         elif self.attacking_card is not None and self.defending_card is None:
@@ -247,13 +255,10 @@ class Cardgame(ParallelEnv):
             def_terminated = True
             self.winner = self.attacking_agent
 
-        # Neither player has any cards left => Draw, small reward for both
-        elif all(len(cards) == 0 for cards in self.agents_cards.values()):
-            atk_reward = 0.1
-            atk_terminated = True
-            def_reward = 0.1
-            def_terminated = True
-            self.winner = None
+        # Possibly give -step_reward to incentivies quick play
+        else:
+            atk_reward = 0
+            def_reward = 0
 
         self.rewards[self.attacking_agent] = atk_reward
         self.terminateds[self.attacking_agent] = atk_terminated
