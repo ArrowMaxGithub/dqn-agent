@@ -45,6 +45,7 @@ class DQNAgent:
         learning_rate,
         n_steps_total,
         train_batch_size,
+        num_steps_sampled_before_learning_starts,
         num_env_runners,
         num_envs_per_env_runner,
         initial_epsilon,
@@ -86,14 +87,14 @@ class DQNAgent:
             .training(
                 replay_buffer_config={
                     "type": "MultiAgentEpisodeReplayBuffer",
-                    "capacity": 500_000,
+                    "capacity": 50_000,
                 },
                 lr=learning_rate,
                 epsilon=[(0, 1.0), (n_steps_total, final_epsilon)],
                 dueling=dueling,
                 double_q=double_q,
                 train_batch_size=train_batch_size,
-                training_intensity=1.0,
+                num_steps_sampled_before_learning_starts=num_steps_sampled_before_learning_starts,
             )
         )
 
