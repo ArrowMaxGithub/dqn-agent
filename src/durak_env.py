@@ -1,4 +1,3 @@
-from copy import deepcopy
 from dataclasses import dataclass
 from enum import IntEnum, Enum
 
@@ -32,7 +31,6 @@ class DurakEnv(ParallelEnv):
     metadata = {"render_modes": [], "name": "durak_card_game_v0"}
 
     def __init__(self):
-        self.verbose = False
         self.gamestate = GameState()
         self.gamestate.setup(2)
         self.num_cards = len(CardColor) * len(CardValue)
@@ -92,10 +90,6 @@ class DurakEnv(ParallelEnv):
         return self.action_spaces[agent]
 
     def step(self, actions):
-        self.print(
-            f"turn: {self.turn_count} | phase: {self.phase} | active: {self.agent_selection} | {len(self.gamestate.players[0].hand.cards)} | {len(self.gamestate.players[1].hand.cards)} | {len(self.gamestate.draw_pile)}"
-        )
-
         self._clear_rewards()
 
         for agent, action in actions.items():
@@ -128,9 +122,6 @@ class DurakEnv(ParallelEnv):
         if action is None or action == self.passing_action:
             self.next_player = self.agents[self.gamestate.defender]
             self.phase = Phase.Attack
-            self.print(f"{attacker.name} passed during attack")
-            self.print("ending round, swapping roles")
-            self.print("-" * 16)
             self.gamestate.discard_table_cards()
             self.gamestate.refill_hands()
             self.gamestate.swap_roles()
@@ -140,8 +131,6 @@ class DurakEnv(ParallelEnv):
 
         assert card in attacker.hand.cards
         assert card in self.gamestate.LegalAttackCards(attacker.hand.cards)
-
-        self.print(f"{attacker.name} attacked with {card}")
 
         attacker.hand.cards.remove(card)
         self.gamestate.add_attack_card(card)
@@ -155,15 +144,12 @@ class DurakEnv(ParallelEnv):
         if action is None or action == self.passing_action:
             self.next_player = self.agents[self.gamestate.defender]
             self.phase = Phase.Take
-            self.print(f"{attacker.name} passed during throw-in")
             return
 
         card = self._get_card_from_index(action)
 
         assert card in attacker.hand.cards
         assert card in self.gamestate.LegalAttackCards(attacker.hand.cards)
-
-        self.print(f"{attacker.name} thrown in {card}")
 
         attacker.hand.cards.remove(card)
         self.gamestate.add_attack_card(card)
@@ -177,15 +163,12 @@ class DurakEnv(ParallelEnv):
         if action is None or action == self.passing_action:
             self.next_player = self.agents[self.gamestate.attacker]
             self.phase = Phase.ThrowIn
-            self.print(f"{defender.name} passed during defense")
             return
 
         card = self._get_card_from_index(action)
 
         assert card in defender.hand.cards
         assert card in self.gamestate.LegalDefenseCards(defender.hand.cards)
-
-        self.print(f"{defender.name} defended with {card}")
 
         defender.hand.cards.remove(card)
         self.gamestate.add_defense_card(card)
@@ -198,11 +181,7 @@ class DurakEnv(ParallelEnv):
         defender = self.gamestate.players[self.gamestate.defender]
         to_take = self.gamestate.collect_table_cards()
 
-        self.print(f"{defender.name} took {to_take}")
         defender.hand.cards.extend(to_take)
-
-        self.print("ending round, keeping roles")
-        self.print("-" * 16)
 
         self.gamestate.refill_hands()
 
@@ -220,7 +199,6 @@ class DurakEnv(ParallelEnv):
         winner = self._get_winner()
 
         if winner is not None:
-            self.print(f"{winner} won!")
             winning_agent = winner
             losing_agent = (
                 self.agents[1] if winner == self.agents[0] else self.agents[0]
@@ -235,9 +213,11 @@ class DurakEnv(ParallelEnv):
         self._accumulate_rewards()
         state = self._update_agents_data()
 
-        for agent in list(self.agents):
-            if self.terminateds[agent] or self.truncateds[agent]:
-                self._remove_agent(agent)
+        dead_agents = [
+            a for a in self.agents if self.terminateds[a] or self.truncateds[a]
+        ]
+        for agent in dead_agents:
+            self._remove_agent(agent)
 
         self.agent_selection = self.next_player
         self.turn_count += 1
@@ -250,20 +230,25 @@ class DurakEnv(ParallelEnv):
             if pair.defense:
                 self.tracked_cards.add(pair.defense)
 
+        # Unzip in-play cards
+        pairs = self.gamestate.table
+        attacks = set([pair.attack for pair in pairs])
+        defenses = set([pair.defense for pair in pairs])
+
         for i, agent in enumerate(self.agents):
-            self._update_agent_data(i, agent)
+            self._update_agent_data(i, agent, attacks, defenses)
 
         return (
-            deepcopy(self.observations),
-            deepcopy(self.rewards),
-            deepcopy(self.terminateds),
-            deepcopy(self.truncateds),
-            deepcopy(self.infos),
+            self.observations,
+            self.rewards,
+            self.terminateds,
+            self.truncateds,
+            self.infos,
         )
 
-    def _update_agent_data(self, i, agent):
-        cards = self.gamestate.players[i].hand.cards
-        opponent_cards = self.gamestate.players[(i + 1) % 2].hand.cards
+    def _update_agent_data(self, i, agent, attacks, defenses):
+        cards = set(self.gamestate.players[i].hand.cards)
+        opponent_cards = set(self.gamestate.players[(i + 1) % 2].hand.cards)
         obs = self.observations[agent]["observations"]
 
         # Set trump color
@@ -272,11 +257,6 @@ class DurakEnv(ParallelEnv):
         # Set player hand cards - may yet contain untracked cards
         indices = [self._get_index_from_card(card) for card in cards]
         obs[indices] = Status.MyCard
-
-        # Unzip in-play cards
-        pairs = self.gamestate.table
-        attacks = [pair.attack for pair in pairs]
-        defenses = [pair.defense for pair in pairs]
 
         # Set already shown cards
         for card in self.tracked_cards:
@@ -317,25 +297,20 @@ class DurakEnv(ParallelEnv):
         if len(self.gamestate.table) == 0 and i == self.gamestate.attacker:
             action_mask[self.passing_action] = 0
 
-        if not any(action_mask):
-            raise ValueError(f"No legal actions available to {agent}")
+        if __debug__:
+            if not any(action_mask):
+                raise ValueError(f"No legal actions available to {agent}")
 
-        for index, mask in enumerate(action_mask[:-1]):
-            card = self._get_card_from_index(index)
-            if mask == 1:
-                assert card in cards
+            for index, mask in enumerate(action_mask[:-1]):
+                card = self._get_card_from_index(index)
+                if mask == 1:
+                    assert card in cards
 
         self.observations[agent]["observations"] = obs
         self.observations[agent]["action_mask"] = action_mask
 
     def _remove_agent(self, agent):
         self.agents.remove(agent)
-        self.rewards.pop(agent)
-        self._cumulative_rewards.pop(agent)
-        self.terminateds.pop(agent)
-        self.truncateds.pop(agent)
-        self.observations.pop(agent)
-        self.infos.pop(agent)
 
     def _clear_rewards(self):
         for agent in self.agents:
@@ -356,10 +331,6 @@ class DurakEnv(ParallelEnv):
         color = CardColor(index // len(CardValue))
         value = CardValue(index % len(CardValue) + 6)
         return Card(value=value, color=color)
-
-    def print(self, msg):
-        if self.verbose:
-            print(msg)
 
 
 if __name__ == "__main__":

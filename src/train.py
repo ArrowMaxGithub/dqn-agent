@@ -1,22 +1,22 @@
-from pettingzoo import ParallelEnv
 from tqdm import tqdm
 
 
-def train(agents, env: ParallelEnv, n_episodes):
+def train(env_factory, agents, n_episodes):
+    env = env_factory()
     assert len(agents) == env.max_num_agents
 
     agents_dict = {
         agent_id: agent for agent_id, agent in zip(env.possible_agents, agents)
     }
 
+    actions = {agent_id: None for agent_id in env.possible_agents}
+
     for _ in tqdm(range(n_episodes)):
         obss, infos = env.reset()
 
         while env.agents:
-            actions = {
-                agent_id: agents_dict[agent_id].get_action(obss[agent_id])
-                for agent_id in env.agents
-            }
+            for agent_id in env.agents:
+                actions[agent_id] = agents_dict[agent_id].get_action(obss[agent_id])
 
             last_obss = dict(obss)
             obss, rewards, terms, truncs, infos = env.step(actions)

@@ -1,8 +1,11 @@
 import numpy as np
+import pickle
+import os
+from pathlib import Path
 
 
 class QAgent:
-    def __init__(
+    def new(
         self,
         passing_action: int,
         n_action_space: int,
@@ -23,6 +26,19 @@ class QAgent:
         self.discount_factor = discount_factor
         self.illegal_mask = illegal_mask
         self.training_error = []
+        return self
+
+    def save(self, path):
+        path = Path(f"{path}/agent.pkl").resolve()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+        with open(path, "wb") as f:
+            pickle.dump(self, f)
+
+    def load(path):
+        path = Path(f"{path}/agent.pkl").resolve()
+        with open(path, "rb") as f:
+            return pickle.load(f)
 
     def get_label(self):
         return "QAgent"

@@ -13,12 +13,31 @@ from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.tune.registry import register_env
-
 from durak_env import DurakEnv
+
+from ray.rllib.algorithms.algorithm import Algorithm
+import pickle
+import os
+from pathlib import Path
+
+
+def env_creator(cfg):
+    return ParallelPettingZooEnv(DurakEnv())
+
+
+tmp_env = env_creator(None)
+player_id = tmp_env.possible_agents[0]
+obs_space = tmp_env.observation_space[player_id]
+act_space = tmp_env.action_space[player_id]
+
+register_env(
+    "custom-cardgame-v1",
+    env_creator,
+)
 
 
 class DQNAgent:
-    def __init__(
+    def new(
         self,
         passing_action,
         learning_rate,
@@ -31,19 +50,6 @@ class DQNAgent:
         dueling,
         double_q,
     ):
-        def env_creator(cfg):
-            return ParallelPettingZooEnv(DurakEnv())
-
-        tmp_env = env_creator(None)
-        player_id = tmp_env.possible_agents[0]
-        obs_space = tmp_env.observation_space[player_id]
-        act_space = tmp_env.action_space[player_id]
-
-        register_env(
-            "custom-cardgame-v1",
-            env_creator,
-        )
-
         self.passing_action = passing_action
         self.epsilon = initial_epsilon
         self.epsilon_decay = (self.epsilon - final_epsilon) / 2 * n_steps_total
@@ -89,7 +95,41 @@ class DQNAgent:
         )
 
         self.algo = config.build()
-        self.module = self.algo.get_module("p0")
+        return self
+
+    def save(self, path):
+        parameters_path = Path(f"{path}/agent_parameters.pkl").resolve()
+        algo_path = Path(path).resolve().as_uri()
+        os.makedirs(os.path.dirname(parameters_path), exist_ok=True)
+
+        parameters = {
+            "passing_action": self.passing_action,
+            "epsilon": self.epsilon,
+            "epsilon_decay": self.epsilon_decay,
+            "final_epsilon": self.final_epsilon,
+        }
+        with open(parameters_path, "wb") as f:
+            pickle.dump(parameters, f)
+
+        self.algo.save_to_path(algo_path)
+
+    def load(path):
+        parameters_path = Path(f"{path}/agent_parameters.pkl").resolve()
+        algo_path = Path(path).resolve().as_uri()
+
+        with open(parameters_path, "rb") as f:
+            parameters = pickle.load(f)
+
+        algo = Algorithm.from_checkpoint(algo_path)
+
+        agent = DQNAgent()
+        agent.passing_action = parameters["passing_action"]
+        agent.epsilon = parameters["epsilon"]
+        agent.passepsilon_decaying_action = parameters["epsilon_decay"]
+        agent.final_epsilon = parameters["final_epsilon"]
+        agent.algo = algo
+
+        return agent
 
     def get_action(self, obs_dict, force_exploitation=False):
         if np.random.random() < self.epsilon and not force_exploitation:
@@ -97,11 +137,13 @@ class DQNAgent:
             valid_actions = np.where(mask == 1)[0]
             return np.random.choice(valid_actions)
         else:
+            module = self.algo.get_module("p0")
             batch_input = self._get_batch_input(obs_dict)
-            output = self.module.forward_inference(batch_input)
+            output = module.forward_inference(batch_input)
             return torch.argmax(output[Columns.ACTION_DIST_INPUTS], dim=-1).item()
 
     def update(self, obs=None, action=None, reward=None, term=None, next_obs=None):
+        print("dqn train")
         self.algo.train()
 
     def get_label(self):
@@ -192,7 +234,7 @@ def bench():
 
     env = DurakEnv()
 
-    agent = DQNAgent(
+    agent = DQNAgent().new(
         passing_action=env.passing_action,
         learning_rate=0.001,
         n_steps_total=n_steps_total,
@@ -216,3 +258,7 @@ def bench():
     print(
         f"Total time: {delta_s:.2f}s | Avg: {avg_s:.2f}s | Avg-per-step: {avg_ms_per_step:.2f}ms"
     )
+
+
+if __name__ == "__main__":
+    bench()

@@ -9,4 +9,4 @@ RUN pip install -r docker_requirements.txt
 
 COPY /src /src
 
-CMD ["/opt/venv/bin/python", "src/main.py"] 
+CMD ["/opt/venv/bin/python","-OO","src/main.py"] 
