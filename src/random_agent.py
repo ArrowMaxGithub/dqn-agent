@@ -9,7 +9,7 @@ class RandomAgent:
         self.passing_action = passing_action
 
     def get_label(self):
-        return "Random"
+        return "RandomAgent"
 
     def get_action(self, obs_dict, force_exploitation=True):
         mask = obs_dict["action_mask"]

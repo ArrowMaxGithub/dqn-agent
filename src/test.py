@@ -1,4 +1,7 @@
 from tqdm import tqdm
+from q_agent import QAgent
+from dqn_agent import DQNAgent
+from random_agent import RandomAgent
 
 
 def test(env_factory, agents, n_episodes) -> (float, float, float):
@@ -43,14 +46,56 @@ def test(env_factory, agents, n_episodes) -> (float, float, float):
     )
 
 
-def cross(env_factory, agents, pairings, n_episodes):
+def test_all(env_factory, pairings, n_episodes):
     results = {}
 
     for a0, a1 in pairings:
-        agent_0 = agents[a0]
-        agent_1 = agents[a1]
-        results[(agent_0.get_label(), agent_1.get_label())] = test(
-            env_factory, (agent_0, agent_1), n_episodes
+        results[(a0.get_label(), a1.get_label())] = test(
+            env_factory, (a0, a1), n_episodes
         )
 
     return results
+
+
+def test_all_with_epoch(env_factory, pairings, n_episodes):
+    results = {}
+
+    for epoch, (a0, a1) in enumerate(pairings):
+        results[(epoch, a0.get_label(), a1.get_label())] = test(
+            env_factory, (a0, a1), n_episodes
+        )
+
+    return results
+
+
+def test_all_checkpoints(env_factory, pairing, epochs, n_episodes):
+    (a0, a1) = pairing
+    agents_0 = load_all_checkpoints(a0.get_label(), epochs)
+    agents_1 = load_all_checkpoints(a1.get_label(), epochs)
+    pairings = zip(agents_0, agents_1)
+    return test_all_with_epoch(env_factory, pairings, n_episodes)
+
+
+def load_all_checkpoints(label, epochs):
+    agents = []
+    for epoch in range(epochs):
+        path = f"./checkpoints/{label}/{epoch}/"
+        agent = load_agent(label, path)
+        agents.append(agent)
+    return agents
+
+
+def load_agent(label, path):
+    agent = None
+    match label:
+        case "QAgent":
+            agent = QAgent.load(path)
+        case "DQNAgent":
+            agent = DQNAgent.load(path)
+        case "RandomAgent":
+            agent = RandomAgent(36)
+
+    if agent is None:
+        raise ValueError(f"Failed to load agent from {path}")
+
+    return agent

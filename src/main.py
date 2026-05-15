@@ -1,14 +1,23 @@
-import torch
+import time
 
+import torch
 from prettytable import PrettyTable
 
 from dqn_agent import DQNAgent
 from durak_env import DurakEnv
 from q_agent import QAgent
 from random_agent import RandomAgent
-from test import cross
-from train import train
-import time
+from test import test_all, test_all_checkpoints
+import ray
+import logging
+import warnings
+import os
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+os.environ["RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"] = "0"
+logging.getLogger("ray").setLevel(logging.ERROR)
+ray.init(logging_level=logging.ERROR, configure_logging=True, ignore_reinit_error=True)
 
 
 def env_factory() -> DurakEnv:
@@ -21,107 +30,105 @@ def main():
     else:
         print("NO GPU SUPPORT")
 
-    epochs = 5
-    episodes_per_epoch = 1024
-    episodes_test = 1000
-    episodes_final = 1000
-    n_steps_total = epochs * episodes_per_epoch
-    train_batch_size = 256
+    epochs = 1
+    episodes_per_epoch = 1
+    episodes_test = 1
+    episodes_final = 1
+    n_steps_total = (
+        epochs * episodes_per_epoch * 2
+    )  # Self-Play: 2x update() per iteration
+    train_batch_size = 1
 
     tmp_env = DurakEnv()
-    agents = [
-        QAgent().new(
-            passing_action=tmp_env.passing_action,
-            n_action_space=tmp_env.n_action_space,
-            learning_rate=0.001,
-            n_steps_total=n_steps_total,
-            initial_epsilon=1.0,
-            final_epsilon=0.1,
-            discount_factor=0.95,
-            illegal_mask=-1e34,
-        ),
-        DQNAgent().new(
-            passing_action=tmp_env.passing_action,
-            learning_rate=0.001,
-            n_steps_total=n_steps_total,
-            train_batch_size=train_batch_size,
-            num_env_runners=8,
-            num_envs_per_env_runner=32,
-            initial_epsilon=1.0,
-            final_epsilon=0.1,
-            dueling=False,
-            double_q=False,
-        ),
-        RandomAgent(passing_action=tmp_env.passing_action),
-    ]
-
-    full_pairings = ((0, 0), (0, 1), (1, 1), (0, 2), (1, 2), (2, 2))
-    learn_pairings = (
-        (0, 0, episodes_per_epoch),
-        (1, 1, episodes_per_epoch // train_batch_size),
+    q = QAgent().new(
+        passing_action=tmp_env.passing_action,
+        n_action_space=tmp_env.n_action_space,
+        learning_rate=0.001,
+        n_steps_total=n_steps_total,
+        initial_epsilon=1.0,
+        final_epsilon=0.1,
+        discount_factor=0.95,
+        illegal_mask=-1e34,
     )
-    test_pairings = ((0, 1), (0, 2), (1, 2))
+    dqn = DQNAgent().new(
+        passing_action=tmp_env.passing_action,
+        learning_rate=0.001,
+        n_steps_total=n_steps_total,
+        train_batch_size=train_batch_size,
+        num_env_runners=1,
+        num_envs_per_env_runner=1,
+        initial_epsilon=1.0,
+        final_epsilon=0.1,
+        dueling=False,
+        double_q=False,
+    )
+    rand = RandomAgent(passing_action=tmp_env.passing_action)
+
+    full_pairings = ((q, q), (q, dqn), (dqn, dqn), (q, rand), (dqn, rand), (rand, rand))
+    self_train = (
+        (q, episodes_per_epoch),
+        (dqn, episodes_per_epoch // train_batch_size),
+    )
+    test_pairings = ((q, dqn), (q, rand), (dqn, rand))
 
     start = time.perf_counter()
     total_start = start
     print("Cross table with untrained agents")
-    print_cross_results(cross(env_factory, agents, full_pairings, episodes_test))
+    print_results(test_all(env_factory, full_pairings, episodes_test))
     elapsed = time.perf_counter() - start
-    print(f"Cross table completed after {elapsed}s")
+    print(f"Cross table completed after {elapsed:.2f}s")
     print("-" * 16)
 
     print("Starting training")
-    for a0, a1, n_episodes in learn_pairings:
-        print(f"{agents[a0].get_label()} vs {agents[a1].get_label()}")
-
+    for agent, n_episodes in self_train:
+        label = agent.get_label()
+        print(f"{label} vs {label}")
         for epoch in range(epochs):
             print(f"Learning epoch {epoch}")
-            train(env_factory, (agents[a0], agents[a1]), n_episodes)
-            label = agents[a0].get_label()
+            agent.train(env_factory, n_episodes)
             path = f"./checkpoints/{label}/{epoch}/"
             print(f"Saving agent to {path}")
-            agents[a0].save(path)
+            agent.save(path)
         print()
 
     elapsed = time.perf_counter() - start
-    print(f"Training completed after {elapsed}s")
+    print(f"Training completed after {elapsed:.2f}s")
     print("-" * 16)
 
     start = time.perf_counter()
     print("Testing agent checkpoints")
-    for a0, a1 in test_pairings:
-        for epoch in range(epochs):
-            label_0 = agents[a0].get_label()
-            path_0 = f"./checkpoints/{label_0}/{epoch}/"
-            agent_0 = load_agent(label_0, path_0)
-
-            label_1 = agents[a1].get_label()
-            path_1 = f"./checkpoints/{label_1}/{epoch}/"
-            agent_1 = load_agent(label_1, path_1)
-
-            agents = (agent_0, agent_1)
-
-            print(f"Results after epoch {epoch}")
-            print_cross_results(
-                cross(env_factory, agents, test_pairings, episodes_test)
-            )
+    for pairing in test_pairings:
+        print_epoch_results(
+            test_all_checkpoints(env_factory, pairing, epochs, episodes_test)
+        )
 
     elapsed = time.perf_counter() - start
-    print(f"Testing completed after {elapsed}s")
+    print(f"Testing completed after {elapsed:.2f}s")
     print("-" * 16)
 
     start = time.perf_counter()
     print("Cross table with final checkpoints")
-    print_cross_results(cross(env_factory, agents, full_pairings, episodes_final))
+    print_results(test_all(env_factory, full_pairings, episodes_final))
     elapsed = time.perf_counter() - start
-    print(f"Cross table completed after {elapsed}s")
+    print(f"Cross table completed after {elapsed:.2f}s")
     print("-" * 16)
 
     elapsed = time.perf_counter() - total_start
-    print(f"Total runtime: {elapsed}s")
+    print(f"Total runtime: {elapsed:.2f}s")
 
 
-def print_cross_results(results):
+def print_epoch_results(results):
+    table = PrettyTable()
+    table.field_names = ["Pairing", "Epoch", "Wins", "Draws", "Losses"]
+    for (epoch, a0, a1), r in results.items():
+        wins = f"{r[0]:.2f}"
+        draws = f"{r[1]:.2f}"
+        losses = f"{r[2]:.2f}"
+        table.add_row([f"{a0} vs {a1}", epoch, wins, draws, losses])
+    print(table)
+
+
+def print_results(results):
     table = PrettyTable()
     table.field_names = ["Pairing", "Wins", "Draws", "Losses"]
     for (a0, a1), r in results.items():
@@ -130,14 +137,6 @@ def print_cross_results(results):
         losses = f"{r[2]:.2f}"
         table.add_row([f"{a0} vs {a1}", wins, draws, losses])
     print(table)
-
-
-def load_agent(label, path):
-    match label:
-        case "QAgent":
-            return QAgent.load(path)
-        case "DQNAgent":
-            return DQNAgent.load(path)
 
 
 if __name__ == "__main__":

@@ -16,9 +16,9 @@ from ray.tune.registry import register_env
 from durak_env import DurakEnv
 
 from ray.rllib.algorithms.algorithm import Algorithm
-import pickle
 import os
 from pathlib import Path
+import json
 
 
 def env_creator(cfg):
@@ -57,6 +57,7 @@ class DQNAgent:
 
         config = (
             DQNConfig()
+            .debugging(log_level="ERROR")
             .api_stack(
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
@@ -108,8 +109,8 @@ class DQNAgent:
             "epsilon_decay": self.epsilon_decay,
             "final_epsilon": self.final_epsilon,
         }
-        with open(parameters_path, "wb") as f:
-            pickle.dump(parameters, f)
+        with open(parameters_path, "w") as f:
+            json.dump(parameters, f)
 
         self.algo.save_to_path(algo_path)
 
@@ -117,8 +118,8 @@ class DQNAgent:
         parameters_path = Path(f"{path}/agent_parameters.pkl").resolve()
         algo_path = Path(path).resolve().as_uri()
 
-        with open(parameters_path, "rb") as f:
-            parameters = pickle.load(f)
+        with open(parameters_path, "r") as f:
+            parameters = json.load(f)
 
         algo = Algorithm.from_checkpoint(algo_path)
 
@@ -131,6 +132,12 @@ class DQNAgent:
 
         return agent
 
+    def get_label(self):
+        return "DQNAgent"
+
+    def train(self, env_factory, n_episodes):
+        self.algo.train()
+
     def get_action(self, obs_dict, force_exploitation=False):
         if np.random.random() < self.epsilon and not force_exploitation:
             mask = obs_dict["action_mask"]
@@ -141,13 +148,6 @@ class DQNAgent:
             batch_input = self._get_batch_input(obs_dict)
             output = module.forward_inference(batch_input)
             return torch.argmax(output[Columns.ACTION_DIST_INPUTS], dim=-1).item()
-
-    def update(self, obs=None, action=None, reward=None, term=None, next_obs=None):
-        print("dqn train")
-        self.algo.train()
-
-    def get_label(self):
-        return "DQNAgent"
 
     def _get_batch_input(self, obs_dict, next_obs_dict=None):
         batch_input = {
