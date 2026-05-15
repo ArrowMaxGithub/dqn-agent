@@ -90,6 +90,16 @@ class DurakEnv(ParallelEnv):
         return self.action_spaces[agent]
 
     def step(self, actions):
+        # ParallelEnvWrapper calls step once more after all agents are already dead
+        if len(self.agents) == 0:
+            return (
+                self.observations,
+                self.rewards,
+                self.terminateds,
+                self.truncateds,
+                self.infos,
+            )
+
         self._clear_rewards()
 
         for agent, action in actions.items():
@@ -201,7 +211,9 @@ class DurakEnv(ParallelEnv):
         if winner is not None:
             winning_agent = winner
             losing_agent = (
-                self.agents[1] if winner == self.agents[0] else self.agents[0]
+                self.possible_agents[1]
+                if winner == self.possible_agents[0]
+                else self.possible_agents[0]
             )
 
             self.rewards[winning_agent] = 1
@@ -213,11 +225,9 @@ class DurakEnv(ParallelEnv):
         self._accumulate_rewards()
         state = self._update_agents_data()
 
-        dead_agents = [
-            a for a in self.agents if self.terminateds[a] or self.truncateds[a]
-        ]
-        for agent in dead_agents:
-            self._remove_agent(agent)
+        for agent_ids in self.possible_agents:
+            if self.terminateds[agent_ids] or self.truncateds[agent_ids]:
+                self._remove_agent(agent_ids)
 
         self.agent_selection = self.next_player
         self.turn_count += 1
@@ -310,7 +320,8 @@ class DurakEnv(ParallelEnv):
         self.observations[agent]["action_mask"] = action_mask
 
     def _remove_agent(self, agent):
-        self.agents.remove(agent)
+        if agent in self.agents:
+            self.agents.remove(agent)
 
     def _clear_rewards(self):
         for agent in self.agents:

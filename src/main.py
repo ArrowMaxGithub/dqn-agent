@@ -21,10 +21,10 @@ def main():
     else:
         print("NO GPU SUPPORT")
 
-    epochs = 2
-    episodes_per_epoch = 256
-    episodes_test = 100
-    episodes_final = 100
+    epochs = 5
+    episodes_per_epoch = 1024
+    episodes_test = 1000
+    episodes_final = 1000
     n_steps_total = epochs * episodes_per_epoch
     train_batch_size = 256
 
@@ -45,8 +45,8 @@ def main():
             learning_rate=0.001,
             n_steps_total=n_steps_total,
             train_batch_size=train_batch_size,
-            num_env_runners=1,
-            num_envs_per_env_runner=1,
+            num_env_runners=8,
+            num_envs_per_env_runner=32,
             initial_epsilon=1.0,
             final_epsilon=0.1,
             dueling=False,
@@ -65,7 +65,7 @@ def main():
     start = time.perf_counter()
     total_start = start
     print("Cross table with untrained agents")
-    # print_cross_results(cross(env_factory, agents, full_pairings, episodes_test))
+    print_cross_results(cross(env_factory, agents, full_pairings, episodes_test))
     elapsed = time.perf_counter() - start
     print(f"Cross table completed after {elapsed}s")
     print("-" * 16)
