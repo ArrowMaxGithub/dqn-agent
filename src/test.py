@@ -57,32 +57,24 @@ def test_all(env_factory, pairings, n_episodes):
     return results
 
 
-def test_all_with_epoch(env_factory, pairings, n_episodes):
+def test_all_checkpoints(env_factory, pairing, epochs, n_episodes):
     results = {}
+    (a0, a1) = pairing
+    label_a0 = a0.get_label()
+    label_a1 = a1.get_label()
 
-    for epoch, (a0, a1) in enumerate(pairings):
-        results[(epoch, a0.get_label(), a1.get_label())] = test(
-            env_factory, (a0, a1), n_episodes
-        )
-
+    for epoch in enumerate(epochs):
+        agent_0 = load_checkpoint(label_a0, epoch)
+        agent_1 = load_checkpoint(label_a1, epoch)
+        results[epoch] = test(env_factory, (agent_0, agent_1), n_episodes)
+        del agent_0
+        del agent_1
     return results
 
 
-def test_all_checkpoints(env_factory, pairing, epochs, n_episodes):
-    (a0, a1) = pairing
-    agents_0 = load_all_checkpoints(a0.get_label(), epochs)
-    agents_1 = load_all_checkpoints(a1.get_label(), epochs)
-    pairings = zip(agents_0, agents_1)
-    return test_all_with_epoch(env_factory, pairings, n_episodes)
-
-
-def load_all_checkpoints(label, epochs):
-    agents = []
-    for epoch in range(epochs):
-        path = f"./checkpoints/{label}/{epoch}/"
-        agent = load_agent(label, path)
-        agents.append(agent)
-    return agents
+def load_checkpoint(label, epoch):
+    path = f"./checkpoints/{label}/{epoch}/"
+    return load_agent(label, path)
 
 
 def load_agent(label, path):

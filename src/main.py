@@ -120,7 +120,7 @@ def main():
 def print_epoch_results(results):
     table = PrettyTable()
     table.field_names = ["Pairing", "Epoch", "Wins", "Draws", "Losses"]
-    for (epoch, a0, a1), r in results.items():
+    for epoch, (a0, a1), r in results.items():
         wins = f"{r[0]:.2f}"
         draws = f"{r[1]:.2f}"
         losses = f"{r[2]:.2f}"
