@@ -63,10 +63,12 @@ def test_all_checkpoints(env_factory, pairing, epochs, n_episodes):
     label_a0 = a0.get_label()
     label_a1 = a1.get_label()
 
-    for epoch in enumerate(epochs):
+    for epoch in range(epochs):
         agent_0 = load_checkpoint(label_a0, epoch)
         agent_1 = load_checkpoint(label_a1, epoch)
-        results[epoch] = test(env_factory, (agent_0, agent_1), n_episodes)
+        results[epoch, label_a0, label_a1] = test(
+            env_factory, (agent_0, agent_1), n_episodes
+        )
         del agent_0
         del agent_1
     return results
