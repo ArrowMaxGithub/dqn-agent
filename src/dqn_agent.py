@@ -20,6 +20,8 @@ import os
 from pathlib import Path
 import json
 
+from tqdm import tqdm
+
 
 def env_creator(cfg):
     return ParallelPettingZooEnv(DurakEnv())
@@ -136,7 +138,9 @@ class DQNAgent:
         return "DQNAgent"
 
     def train(self, env_factory, n_episodes):
-        self.algo.train()
+        batches = n_episodes // self.algo.config.train_batch_size
+        for batch in tqdm(range(batches)):
+            self.algo.train()
 
     def get_action(self, obs_dict, force_exploitation=False):
         if np.random.random() < self.epsilon and not force_exploitation:

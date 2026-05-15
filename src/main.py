@@ -30,14 +30,14 @@ def main():
     else:
         print("NO GPU SUPPORT")
 
-    epochs = 1
-    episodes_per_epoch = 1
-    episodes_test = 1
-    episodes_final = 1
+    epochs = 10
+    episodes_per_epoch = 1024
+    episodes_test = 1000
+    episodes_final = 1000
     n_steps_total = (
         epochs * episodes_per_epoch * 2
     )  # Self-Play: 2x update() per iteration
-    train_batch_size = 1
+    train_batch_size = 512
 
     tmp_env = DurakEnv()
     q = QAgent().new(
@@ -55,8 +55,8 @@ def main():
         learning_rate=0.001,
         n_steps_total=n_steps_total,
         train_batch_size=train_batch_size,
-        num_env_runners=1,
-        num_envs_per_env_runner=1,
+        num_env_runners=16,
+        num_envs_per_env_runner=32,
         initial_epsilon=1.0,
         final_epsilon=0.1,
         dueling=False,
@@ -67,7 +67,7 @@ def main():
     full_pairings = ((q, q), (q, dqn), (dqn, dqn), (q, rand), (dqn, rand), (rand, rand))
     self_train = (
         (q, episodes_per_epoch),
-        (dqn, episodes_per_epoch // train_batch_size),
+        (dqn, episodes_per_epoch),
     )
     test_pairings = ((q, dqn), (q, rand), (dqn, rand))
 
