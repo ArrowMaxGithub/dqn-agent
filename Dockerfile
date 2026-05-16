@@ -9,4 +9,4 @@ RUN pip install -r docker_requirements.txt
 
 COPY /src /src
 
-CMD ["/opt/venv/bin/python","-O","src/main.py"] 
+CMD ["/opt/venv/bin/python","-O","src/dqn_agent.py"] 
