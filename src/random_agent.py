@@ -2,11 +2,6 @@ import numpy as np
 import torch
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.columns import Columns
-from ray.rllib.algorithms.dqn.dqn_learner import (
-    QF_NEXT_PREDS,
-    QF_PREDS,
-    QF_TARGET_NEXT_PREDS,
-)
 
 
 class RandomAgent:
@@ -38,22 +33,15 @@ class RandomMaskedRLModule(TorchRLModule):
         return self._common_forward(batch)
 
     def _forward_train(self, batch, **kwargs):
-        outputs = self._common_forward(batch, obs_key=Columns.OBS)
-        if Columns.NEXT_OBS in batch:
-            next_outputs = self._common_forward(batch, obs_key=Columns.NEXT_OBS)
-            outputs[QF_NEXT_PREDS] = next_outputs[QF_PREDS]
-            outputs[QF_TARGET_NEXT_PREDS] = next_outputs[QF_PREDS]
-
-        return outputs
+        return self._common_forward(batch)
 
     def _common_forward(self, batch, obs_key=Columns.OBS):
         mask = batch[obs_key]["action_mask"]
-        q_values = torch.rand_like(mask, dtype=torch.float32)
+        random = torch.rand_like(mask, dtype=torch.float32)
 
-        inf_mask = (1 - mask) * -1e34
-        masked_q_values = q_values + inf_mask
+        inf_mask = (1 - mask) * -1e9
+        legal = random + inf_mask
 
         return {
-            QF_PREDS: masked_q_values,
-            Columns.ACTION_DIST_INPUTS: masked_q_values,
+            Columns.ACTION_DIST_INPUTS: legal,
         }

@@ -55,7 +55,7 @@ class DurakEnv(ParallelEnv):
         }
 
     def reset(self, *, seed=None, options=None):
-        np.random.seed(seed)
+        # np.random.seed(seed)
         self.gamestate.setup(2)
         self.agents = list(self.possible_agents)
         self.trump_card = self.gamestate.draw_pile[0]

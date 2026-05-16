@@ -16,6 +16,9 @@ import json
 
 from tqdm import tqdm
 
+from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.learner.utils import make_target_network
+
 
 class DQNAgent:
     def save(self, path):
@@ -98,7 +101,7 @@ class DQNAgent:
         return trans_obs_dict
 
 
-class DQNMaskedRLModule(TorchRLModule):
+class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
     def setup(self):
         obs_shape = self.config.observation_space["observations"].shape
         num_states = self.config.observation_space["observations"].nvec.max()
@@ -106,25 +109,75 @@ class DQNMaskedRLModule(TorchRLModule):
 
         input_dim = obs_shape[0] * num_states
 
+        self.initial_epsilon = self.model_config.get("initial_epsilon", 1.0)
+        self.final_epsilon = self.model_config.get("final_epsilon", 0.1)
+        self.decay_steps = self.model_config.get("decay_steps", 10000)
+        self.step_counter = 0
+
         self.embedding = nn.Embedding(num_states, num_states)
         self.net = nn.Sequential(
-            nn.Linear(input_dim, 256),
+            nn.Linear(input_dim, 512),
             nn.ReLU(),
-            nn.Linear(256, num_outputs),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_outputs),
         )
+
+        self.make_target_networks()
+
+    def make_target_networks(self) -> None:
+        self.target_embedding = make_target_network(self.embedding)
+        self.target_net = make_target_network(self.net)
+
+    def get_target_network_pairs(self):
+        return [
+            (self.embedding, self.target_embedding),
+            (self.net, self.target_net),
+        ]
+
+    def forward_target(self, batch):
+        obs = batch[Columns.OBS]["observations"].long()
+        mask = batch[Columns.OBS]["action_mask"]
+
+        embedded = self.target_embedding(obs)
+        flat_obs = embedded.view(obs.shape[0], -1)
+        q_values = self.target_net(flat_obs)
+
+        inf_mask = (1 - mask) * -1e9
+        return {QF_PREDS: q_values + inf_mask}
 
     def _forward_inference(self, batch, **kwargs):
         return self._common_forward(batch)
 
     def _forward_exploration(self, batch, **kwargs):
-        return self._common_forward(batch)
+        batch_size = batch[Columns.OBS]["observations"].shape[0]
+        outputs = self._common_forward(batch)
+        mask = batch[Columns.OBS]["action_mask"]
+
+        decay = self.step_counter / self.decay_steps
+        decay_delta = self.initial_epsilon - self.final_epsilon
+        epsilon = max(self.final_epsilon, self.initial_epsilon - decay * decay_delta)
+        self.step_counter += batch_size
+
+        if np.random.rand() < epsilon:
+            random = torch.rand_like(mask, dtype=torch.float32)
+            inf_mask = (1 - mask) * -1e9
+            outputs[QF_PREDS] = torch.zeros_like(random, dtype=torch.float32)
+            outputs[Columns.ACTION_DIST_INPUTS] = random + inf_mask
+
+        return outputs
 
     def _forward_train(self, batch, **kwargs):
         outputs = self._common_forward(batch, obs_key=Columns.OBS)
+
         if Columns.NEXT_OBS in batch:
-            next_outputs = self._common_forward(batch, obs_key=Columns.NEXT_OBS)
-            outputs[QF_NEXT_PREDS] = next_outputs[QF_PREDS]
-            outputs[QF_TARGET_NEXT_PREDS] = next_outputs[QF_PREDS]
+            next_batch = {Columns.OBS: batch[Columns.NEXT_OBS]}
+            target_output = self.forward_target(next_batch)
+
+            outputs[QF_TARGET_NEXT_PREDS] = target_output[QF_PREDS]
+            outputs[QF_NEXT_PREDS] = outputs[QF_PREDS]
 
         return outputs
 
@@ -136,7 +189,7 @@ class DQNMaskedRLModule(TorchRLModule):
         flat_obs = embedded.view(obs.shape[0], -1)
         q_values = self.net(flat_obs)
 
-        inf_mask = (1 - mask) * -1e34
+        inf_mask = (1 - mask) * -1e9
         masked_q_values = q_values + inf_mask
 
         return {
