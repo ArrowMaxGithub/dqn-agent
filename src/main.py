@@ -54,7 +54,7 @@ def main():
         learning_rate=1e-5,
         n_steps_total=n_steps_total_dqn,
         train_batch_size=train_batch_size,
-        num_steps_sampled_before_learning_starts=65536,
+        num_steps_sampled_before_learning_starts=1024,
         replay_buffer_capacity=65536,
         num_env_runners=16,
         num_envs_per_env_runner=32,

@@ -10,7 +10,6 @@ from ray.rllib.algorithms.dqn.dqn_learner import (
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.tune.registry import register_env
 from durak_env import DurakEnv
@@ -24,13 +23,13 @@ from tqdm import tqdm
 
 
 def env_creator(cfg):
-    return ParallelPettingZooEnv(DurakEnv())
+    return DurakEnv()
 
 
 tmp_env = env_creator(None)
 player_id = tmp_env.possible_agents[0]
-obs_space = tmp_env.observation_space[player_id]
-act_space = tmp_env.action_space[player_id]
+obs_space = tmp_env.get_observation_space(player_id)
+act_space = tmp_env.get_action_space(player_id)
 
 register_env(
     "custom-cardgame-v1",

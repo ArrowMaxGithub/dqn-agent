@@ -3,8 +3,8 @@ from enum import IntEnum, Enum
 
 import gymnasium as gym
 import numpy as np
-from pettingzoo import ParallelEnv
-from pettingzoo.test import parallel_api_test
+
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
 from durak import Card, CardColor, CardValue, GameState
 
@@ -27,14 +27,17 @@ class Phase(Enum):
     Take = 3
 
 
-class DurakEnv(ParallelEnv):
+class DurakEnv(MultiAgentEnv):
     metadata = {"render_modes": [], "name": "durak_card_game_v0"}
 
     def __init__(self):
+        super().__init__()
+
         self.gamestate = GameState()
         self.gamestate.setup(2)
         self.num_cards = len(CardColor) * len(CardValue)
         self.possible_agents = [player.name for player in self.gamestate.players]
+        self._agent_ids = set(self.possible_agents)
         self.n_action_space = self.num_cards + 1
         self.passing_action = self.num_cards
         self.observation_spaces = {
@@ -55,6 +58,7 @@ class DurakEnv(ParallelEnv):
         }
 
     def reset(self, *, seed=None, options=None):
+        super().reset(seed=seed)
         np.random.seed(seed)
         self.gamestate.setup(2)
         self.agents = list(self.possible_agents)
@@ -63,10 +67,12 @@ class DurakEnv(ParallelEnv):
         self.agent_selection = self.agents[self.gamestate._find_first_attacker()]
         self.next_player = self.agent_selection
         self.phase = Phase.Attack
-        self.rewards = {agent: 0 for agent in self.agents}
+        self.rewards = {agent: None for agent in self.agents}
         self._cumulative_rewards = {agent: 0 for agent in self.agents}
         self.terminateds = {agent: False for agent in self.agents}
         self.truncateds = {agent: False for agent in self.agents}
+        self.terminateds["__all__"] = False
+        self.truncateds["__all__"] = False
         self.observations = {
             agent: {
                 "observations": np.array(
@@ -79,21 +85,18 @@ class DurakEnv(ParallelEnv):
         self.infos = {agent: {} for agent in self.agents}
         state = self._update_agents_data()
 
-        self.turn_count = 0
-
         return state[0], state[4]
+        # ready_state = self._get_ready_state(state, self.agent_selection)
 
-    def observation_space(self, agent):
+        # return ready_state[0], ready_state[4]
+
+    def get_observation_space(self, agent):
         return self.observation_spaces[agent]
 
-    def action_space(self, agent):
+    def get_action_space(self, agent):
         return self.action_spaces[agent]
 
     def step(self, actions):
-        # ParallelEnvWrapper calls step once more after all agents are already dead
-        if len(self.agents) == 0:
-            return {}, {}, {}, {}, {}
-
         self._clear_rewards()
 
         for agent, action in actions.items():
@@ -219,7 +222,6 @@ class DurakEnv(ParallelEnv):
             self.terminateds["__all__"] = True
 
         self._accumulate_rewards()
-        alive_agents_this_step = set(self.agents)
         state = self._update_agents_data()
 
         for agent_ids in self.possible_agents:
@@ -227,23 +229,16 @@ class DurakEnv(ParallelEnv):
                 self._remove_agent(agent_ids)
 
         self.agent_selection = self.next_player
-        self.turn_count += 1
+        return state
 
-        obs, rewards, terminateds, truncateds, infos = state
+        # # If this episode terminated entirely => return full state for all players
+        # if self.terminateds["__all__"] or self.truncateds["__all__"]:
+        #     return state
 
-        alive_obs = {a: obs[a] for a in alive_agents_this_step}
-        alive_rewards = {a: rewards[a] for a in alive_agents_this_step}
-        alive_terminateds = {a: terminateds[a] for a in alive_agents_this_step}
-        alive_truncateds = {a: truncateds[a] for a in alive_agents_this_step}
-        alive_infos = {a: infos[a] for a in alive_agents_this_step}
-
-        return (
-            alive_obs,
-            alive_rewards,
-            alive_terminateds,
-            alive_truncateds,
-            alive_infos,
-        )
+        # # Otherwise only return state for the next_active player aka the "ready player"
+        # else:
+        #     self.agent_selection = self.next_player
+        #     return self._get_ready_state(state, self.agent_selection)
 
     def _update_agents_data(self):
         for pair in self.gamestate.table:
@@ -340,7 +335,29 @@ class DurakEnv(ParallelEnv):
 
     def _accumulate_rewards(self):
         for agent in self.agents:
-            self._cumulative_rewards[agent] += self.rewards[agent]
+            if self.rewards[agent] is not None:
+                self._cumulative_rewards[agent] += self.rewards[agent]
+
+    def _get_ready_state(self, state, ready_player):
+        obs, rewards, terminateds, truncateds, infos = state
+
+        # Include rewards for any player who received a reward this turn
+        # Ready player will always be included
+        filtered_rewards = {
+            agent: reward
+            for agent, reward in rewards.items()
+            if agent == ready_player or reward is not None
+        }
+
+        # For all other dicts: Only include the ready player
+        # Special key __all__ fpr terms/truncs must always be included
+        return (
+            {ready_player: obs[ready_player]},
+            filtered_rewards,
+            {ready_player: terminateds[ready_player], "__all__": False},
+            {ready_player: truncateds[ready_player], "__all__": False},
+            {ready_player: infos[ready_player]},
+        )
 
     def _get_index_from_card(self, card: Card) -> int:
         # [Spades[6..Ace], Clubs[6..Ace], Hearts[6..Ace], Diamonds[6..Ace]]
@@ -359,7 +376,6 @@ if __name__ == "__main__":
     import itertools
 
     env = DurakEnv()
-    parallel_api_test(env)
 
     cards = [
         Card(value=value, color=color)
