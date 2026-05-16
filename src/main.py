@@ -13,11 +13,11 @@ import logging
 import warnings
 import os
 
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", category=FutureWarning)
-os.environ["RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"] = "0"
-logging.getLogger("ray").setLevel(logging.ERROR)
-ray.init(logging_level=logging.ERROR, configure_logging=True, ignore_reinit_error=True)
+# warnings.filterwarnings("ignore", category=DeprecationWarning)
+# warnings.filterwarnings("ignore", category=FutureWarning)
+# os.environ["RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"] = "0"
+# logging.getLogger("ray").setLevel(logging.ERROR)
+# ray.init(logging_level=logging.ERROR, configure_logging=True, ignore_reinit_error=True)
 
 
 def env_factory() -> DurakEnv:
@@ -30,32 +30,33 @@ def main():
     else:
         print("NO GPU SUPPORT")
 
-    epochs = 10
-    episodes_per_epoch = 4096
-    episodes_test = 10000
-    episodes_final = 10000
-    n_steps_total_q = epochs * episodes_per_epoch * 2
+    epochs = 2
+    episodes_per_epoch = 1024
+    episodes_test = 1000
+    episodes_final = 1000
+    n_steps_total_q = epochs * episodes_per_epoch
     n_steps_total_dqn = n_steps_total_q * 64
     train_batch_size = 1024
 
     tmp_env = DurakEnv()
-    q = QAgent().new(
-        passing_action=tmp_env.passing_action,
-        n_action_space=tmp_env.n_action_space,
-        learning_rate=1e-5,
-        n_steps_total=n_steps_total_q,
-        initial_epsilon=1.0,
-        final_epsilon=0.1,
-        discount_factor=0.95,
-        illegal_mask=-1e34,
-    )
+    # q = QAgent().new(
+    #     passing_action=tmp_env.passing_action,
+    #     n_action_space=tmp_env.n_action_space,
+    #     learning_rate=1e-5,
+    #     n_steps_total=n_steps_total_q,
+    #     initial_epsilon=1.0,
+    #     final_epsilon=0.1,
+    #     discount_factor=0.95,
+    #     illegal_mask=-1e34,
+    # )
     dqn = DQNAgent().new(
         passing_action=tmp_env.passing_action,
         learning_rate=1e-5,
         n_steps_total=n_steps_total_dqn,
         train_batch_size=train_batch_size,
         num_steps_sampled_before_learning_starts=65536,
-        num_env_runners=32,
+        replay_buffer_capacity=65536,
+        num_env_runners=16,
         num_envs_per_env_runner=32,
         initial_epsilon=1.0,
         final_epsilon=0.1,
@@ -64,17 +65,25 @@ def main():
     )
     rand = RandomAgent(passing_action=tmp_env.passing_action)
 
-    full_pairings = ((q, q), (q, dqn), (dqn, dqn), (q, rand), (dqn, rand), (rand, rand))
-    self_train = (
-        (q, episodes_per_epoch),
-        (dqn, episodes_per_epoch * 256),
-    )
-    test_pairings = ((q, dqn), (q, rand), (dqn, rand))
+    # full_pairings = ((q, q), (q, dqn), (dqn, dqn), (q, rand), (dqn, rand), (rand, rand))
+    # self_train = (
+    #     (q, episodes_per_epoch),
+    #     (dqn, episodes_per_epoch * 256),
+    # )
+    # test_pairings = ((q, dqn), (q, rand), (dqn, rand))
+
+    # full_pairings = ((q, q), (q, rand))
+    # self_train = ((q, episodes_per_epoch),)
+    # test_pairings = (q, rand)
+
+    full_pairings = ((dqn, dqn), (dqn, rand))
+    self_train = ((dqn, n_steps_total_dqn),)
+    test_pairings = ((dqn, dqn), (dqn, rand))
 
     start = time.perf_counter()
     total_start = start
     print("Cross table with untrained agents")
-    print_results(test_all(env_factory, full_pairings, episodes_test))
+    # print_results(test_all(env_factory, full_pairings, episodes_test))
     elapsed = time.perf_counter() - start
     print(f"Cross table completed after {elapsed:.2f}s")
     print("-" * 16)
@@ -90,7 +99,6 @@ def main():
             print(f"Learning epoch {epoch}")
             agent.train(env_factory, n_episodes)
             path = f"./checkpoints/{label}/{epoch}/"
-            print(f"Saving agent to {path}")
             agent.save(path)
         elapsed = time.perf_counter() - start
         print(f"Training completed after {elapsed:.2f}s")

@@ -18,13 +18,12 @@ class QAgent:
         discount_factor: float,
         illegal_mask: float,
     ):
-        total_updates = 2 * n_steps_total * 300
         self.passing_action = passing_action
         self.n_action_space = n_action_space
         self.q_values = {}
         self.lr = learning_rate
         self.epsilon = initial_epsilon
-        self.epsilon_decay = (self.epsilon - final_epsilon) / total_updates
+        self.epsilon_decay = (self.epsilon - final_epsilon) / (2 * n_steps_total)
         self.final_epsilon = final_epsilon
         self.discount_factor = discount_factor
         self.illegal_mask = illegal_mask
@@ -54,6 +53,8 @@ class QAgent:
                 msgpack.packb(self.q_values, default=encode_numpy, use_bin_type=True)
             )
 
+        print(f"Saved agent to {path}")
+
     def load(path):
         parameters_path = Path(f"{path}/agent_parameters.json").resolve()
         path = Path(f"{path}/agent.pkl").resolve()
@@ -74,6 +75,8 @@ class QAgent:
         agent.discount_factor = parameters["discount_factor"]
         agent.illegal_mask = parameters["illegal_mask"]
         agent.q_values = q_values
+
+        print(f"Loaded agent from {path}")
 
         return agent
 
@@ -107,6 +110,9 @@ class QAgent:
                     obs = obss[agent_id]
 
                     agent.update(last_obs, action, reward, term, obs)
+
+            self._decay_epsilon()
+            print(f"Epsilon: {self.epsilon}")
 
     def get_action(self, obs_dict, force_exploitation=False):
         mask = obs_dict["action_mask"]
@@ -154,15 +160,14 @@ class QAgent:
         temporal_diff = target - q_values[action]
 
         self.q_values[obs_key][action] += self.lr * temporal_diff
-        self._decay_epsilon()
+
+    def _decay_epsilon(self):
+        self.epsilon = max(self.final_epsilon, self.epsilon - self.epsilon_decay)
 
     def _get_q_values(self, obs_key):
         if obs_key not in self.q_values:
             self.q_values[obs_key] = np.zeros(self.n_action_space)
         return self.q_values[obs_key]
-
-    def _decay_epsilon(self):
-        self.epsilon = max(self.final_epsilon, self.epsilon - self.epsilon_decay)
 
     def _obs_key(self, obs):
         return obs.tobytes()

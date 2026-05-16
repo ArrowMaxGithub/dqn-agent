@@ -92,13 +92,7 @@ class DurakEnv(ParallelEnv):
     def step(self, actions):
         # ParallelEnvWrapper calls step once more after all agents are already dead
         if len(self.agents) == 0:
-            return (
-                self.observations,
-                self.rewards,
-                self.terminateds,
-                self.truncateds,
-                self.infos,
-            )
+            return {}, {}, {}, {}, {}
 
         self._clear_rewards()
 
@@ -222,7 +216,10 @@ class DurakEnv(ParallelEnv):
             self.rewards[losing_agent] = -1
             self.terminateds[losing_agent] = True
 
+            self.terminateds["__all__"] = True
+
         self._accumulate_rewards()
+        alive_agents_this_step = set(self.agents)
         state = self._update_agents_data()
 
         for agent_ids in self.possible_agents:
@@ -232,7 +229,21 @@ class DurakEnv(ParallelEnv):
         self.agent_selection = self.next_player
         self.turn_count += 1
 
-        return state
+        obs, rewards, terminateds, truncateds, infos = state
+
+        alive_obs = {a: obs[a] for a in alive_agents_this_step}
+        alive_rewards = {a: rewards[a] for a in alive_agents_this_step}
+        alive_terminateds = {a: terminateds[a] for a in alive_agents_this_step}
+        alive_truncateds = {a: truncateds[a] for a in alive_agents_this_step}
+        alive_infos = {a: infos[a] for a in alive_agents_this_step}
+
+        return (
+            alive_obs,
+            alive_rewards,
+            alive_terminateds,
+            alive_truncateds,
+            alive_infos,
+        )
 
     def _update_agents_data(self):
         for pair in self.gamestate.table:
