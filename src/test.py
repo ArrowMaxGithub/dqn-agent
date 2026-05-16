@@ -65,7 +65,7 @@ def test_all_checkpoints(env_factory, pairing, epochs, n_episodes):
 
     for epoch in range(epochs):
         agent_0 = load_checkpoint(label_a0, epoch)
-        agent_1 = load_checkpoint(label_a1, epoch)
+        agent_1 = agent_0 if a0 == a1 else load_checkpoint(label_a1, epoch)
         results[epoch, label_a0, label_a1] = test(
             env_factory, (agent_0, agent_1), n_episodes
         )

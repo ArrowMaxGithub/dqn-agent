@@ -46,6 +46,7 @@ class DQNAgent:
         n_steps_total,
         train_batch_size,
         num_steps_sampled_before_learning_starts,
+        replay_buffer_capacity,
         num_env_runners,
         num_envs_per_env_runner,
         initial_epsilon,
@@ -53,11 +54,14 @@ class DQNAgent:
         dueling,
         double_q,
     ):
-        total_updates = 2 * n_steps_total * 300
         self.passing_action = passing_action
-        self.epsilon = initial_epsilon
-        self.epsilon_decay = (self.epsilon - final_epsilon) / total_updates
+        self.initial_epsilon = initial_epsilon
+        self.epsilon = self.initial_epsilon
         self.final_epsilon = final_epsilon
+        steps_to_final_epsilon = n_steps_total // train_batch_size // 2
+        self.epsilon_decay = (
+            self.epsilon - self.final_epsilon
+        ) / steps_to_final_epsilon  # Reach final_epsilon after 50%
 
         config = (
             DQNConfig()
@@ -88,10 +92,10 @@ class DQNAgent:
             .training(
                 replay_buffer_config={
                     "type": "MultiAgentEpisodeReplayBuffer",
-                    "capacity": 500_000,
+                    "capacity": replay_buffer_capacity,
                 },
                 lr=learning_rate,
-                epsilon=[(0, 1.0), (total_updates, final_epsilon)],
+                epsilon=[(0, 1.0), (steps_to_final_epsilon, final_epsilon)],
                 dueling=dueling,
                 double_q=double_q,
                 train_batch_size=train_batch_size,
@@ -125,14 +129,12 @@ class DQNAgent:
         with open(parameters_path, "r") as f:
             parameters = json.load(f)
 
-        algo = Algorithm.from_checkpoint(algo_path)
-
         agent = DQNAgent()
         agent.passing_action = parameters["passing_action"]
         agent.epsilon = parameters["epsilon"]
         agent.epsilon_decay = parameters["epsilon_decay"]
         agent.final_epsilon = parameters["final_epsilon"]
-        agent.algo = algo
+        agent.algo = Algorithm.from_checkpoint(algo_path)
 
         return agent
 
@@ -140,11 +142,14 @@ class DQNAgent:
         return "DQNAgent"
 
     def train(self, env_factory, n_episodes):
+        print(f"Current epsilon: {self.epsilon:.2f}")
         batches = n_episodes // self.algo.config.train_batch_size
         for batch in tqdm(range(batches)):
             self.algo.train()
-
-    def decay_epsilon(self): ...
+            self.epsilon = max(
+                self.epsilon - self.epsilon_decay,
+                self.final_epsilon,
+            )
 
     def get_action(self, obs_dict, force_exploitation=False):
         if np.random.random() < self.epsilon and not force_exploitation:
@@ -179,9 +184,6 @@ class DQNAgent:
 
         trans_obs_dict = {"observations": obs_tensor, "action_mask": mask_tensor}
         return trans_obs_dict
-
-    def _decay_epsilon(self):
-        self.epsilon = max(self.final_epsilon, self.epsilon - self.epsilon_decay)
 
 
 class MaskedRLModule(TorchRLModule):
