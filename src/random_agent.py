@@ -1,7 +1,8 @@
 import numpy as np
 import torch
-from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.apis.inference_only_api import InferenceOnlyAPI
+from ray.rllib.core.rl_module.torch import TorchRLModule
 
 
 class RandomAgent:
@@ -22,9 +23,12 @@ class RandomAgent:
     def update(last_obs, action, reward, term, obs): ...
 
 
-class RandomMaskedRLModule(TorchRLModule):
+class RandomMaskedRLModule(InferenceOnlyAPI, TorchRLModule):
     def setup(self):
         self.dummy_param = torch.nn.Parameter(torch.zeros(1))
+
+    def get_non_inference_attributes(self):
+        return []
 
     def _forward_inference(self, batch, **kwargs):
         return self._common_forward(batch)
@@ -32,14 +36,11 @@ class RandomMaskedRLModule(TorchRLModule):
     def _forward_exploration(self, batch, **kwargs):
         return self._common_forward(batch)
 
-    def _forward_train(self, batch, **kwargs):
-        return self._common_forward(batch)
-
-    def _common_forward(self, batch, obs_key=Columns.OBS):
-        mask = batch[obs_key]["action_mask"]
+    def _common_forward(self, batch):
+        mask = batch[Columns.OBS]["action_mask"]
         random = torch.rand_like(mask, dtype=torch.float32)
 
-        inf_mask = (1 - mask) * -1e9
+        inf_mask = (1 - mask) * -1e8
         legal = random + inf_mask
 
         return {

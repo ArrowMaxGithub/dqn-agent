@@ -44,15 +44,14 @@ def main():
         print("NO GPU SUPPORT")
 
     learning_rate = 0.0001
-    iterations = 16
+    iterations = 256
     num_env_runners = 16
     num_envs_per_env_runner = 8
-    replay_buffer_capacity = 65536 * 2
+    replay_buffer_capacity = 65536 * 16
     dueling = True
     double_q = True
-    train_batch_size = 4096
-
-    decay_steps = num_env_runners * num_envs_per_env_runner * iterations
+    train_batch_size = 1024
+    num_steps_sampled_before_learning_starts = train_batch_size * 4
 
     config = (
         DQNConfig()
@@ -67,7 +66,9 @@ def main():
         )
         .multi_agent(
             policies={"p0", "random"},
-            policy_mapping_fn=lambda aid, *args, **kwargs: "p0",
+            policy_mapping_fn=lambda aid, *args, **kwargs: (
+                "p0" if aid == "Player 1" else "random"
+            ),
             policies_to_train=["p0"],
         )
         .rl_module(
@@ -75,14 +76,11 @@ def main():
                 rl_module_specs={
                     "p0": RLModuleSpec(
                         module_class=DQNMaskedRLModule,
-                        model_config={
-                            "initial_epsilon": 0.5,
-                            "final_epsilon": 0.01,
-                            "decay_steps": decay_steps,
-                        },
+                        model_config={},
                     ),
                     "random": RLModuleSpec(
                         module_class=RandomMaskedRLModule,
+                        inference_only=True,
                     ),
                 }
             )
@@ -104,13 +102,14 @@ def main():
             dueling=dueling,
             double_q=double_q,
             train_batch_size_per_learner=train_batch_size,
-            num_steps_sampled_before_learning_starts=0,
+            num_steps_sampled_before_learning_starts=num_steps_sampled_before_learning_starts,
+            epsilon=1.0,
         )
         .evaluation(
             evaluation_interval=1,
             evaluation_num_env_runners=16,
             evaluation_duration_unit="episodes",
-            evaluation_duration=10000,
+            evaluation_duration=1000,
             evaluation_config=DQNConfig.overrides(
                 policy_mapping_fn=lambda aid, *args, **kwargs: (
                     "p0" if aid == "Player 1" else "random"
@@ -125,16 +124,21 @@ def main():
     # These are distributed across all env_runners
     # Each env_runner distributes its allocated steps to their environments
     #
-    # For batch_size = 2048, env_runner = 16, envs_per_runner = 32:
-    # Each runner gets: 2048 / 16 = 128 steps
-    # Each env advances by: 128 / 32 = 4 steps
+    # For batch_size = 1024, env_runner = 16, envs_per_runner = 32:
+    # Each runner gets: 1024 / 16 = 64 steps
+    # Each env advances by: 64 / 8 = 8 steps
     pbar = tqdm(range(iterations))
     for i in pbar:
         results = algo.train()
+        epsilon = max(0.05, 1.0 - (1.0 - 0.05) * i / iterations)
+        algo.env_runner_group.foreach_env_runner(
+            lambda w: w.module["p0"].model_config.update({"epsilon": epsilon})
+        )
+
         eval_runners = results.get(EVALUATION_RESULTS, {}).get(ENV_RUNNER_RESULTS, {})
         agent_returns = eval_runners.get("agent_episode_returns_mean", {})
-        episode_return_mean = agent_returns.get("Player 1", 0.0)
-        pbar.set_description(f"Avg vs rand: {episode_return_mean:.3f}")
+        win = agent_returns.get("Player 1", 0.0)
+        pbar.set_description(f"Avg vs rand: eps: {epsilon:.3f} wins: {win:.3f}")
 
     timestamp = datetime.datetime.now()
     path = Path(f"./checkpoints/dqn/{timestamp}").resolve()

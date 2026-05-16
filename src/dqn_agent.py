@@ -109,16 +109,9 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
 
         input_dim = obs_shape[0] * num_states
 
-        self.initial_epsilon = self.model_config.get("initial_epsilon", 1.0)
-        self.final_epsilon = self.model_config.get("final_epsilon", 0.1)
-        self.decay_steps = self.model_config.get("decay_steps", 10000)
-        self.step_counter = 0
-
         self.embedding = nn.Embedding(num_states, num_states)
         self.net = nn.Sequential(
-            nn.Linear(input_dim, 512),
-            nn.ReLU(),
-            nn.Linear(512, 256),
+            nn.Linear(input_dim, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -138,61 +131,60 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
         ]
 
     def forward_target(self, batch):
-        obs = batch[Columns.OBS]["observations"].long()
-        mask = batch[Columns.OBS]["action_mask"]
+        with torch.no_grad():
+            obs = batch[Columns.OBS]["observations"].long()
+            mask = batch[Columns.OBS]["action_mask"]
 
-        embedded = self.target_embedding(obs)
-        flat_obs = embedded.view(obs.shape[0], -1)
-        q_values = self.target_net(flat_obs)
+            embedded = self.target_embedding(obs)
+            flat_obs = embedded.view(obs.shape[0], -1)
+            q_values = self.target_net(flat_obs)
 
-        inf_mask = (1 - mask) * -1e9
-        return {QF_PREDS: q_values + inf_mask}
+            inf_mask = (1 - mask) * -1e9
+            return {QF_PREDS: q_values + inf_mask}
 
     def _forward_inference(self, batch, **kwargs):
         return self._common_forward(batch)
 
     def _forward_exploration(self, batch, **kwargs):
-        batch_size = batch[Columns.OBS]["observations"].shape[0]
-        outputs = self._common_forward(batch)
         mask = batch[Columns.OBS]["action_mask"]
+        outputs = self._common_forward(batch)
+        epsilon = self.model_config["epsilon"]
 
-        decay = self.step_counter / self.decay_steps
-        decay_delta = self.initial_epsilon - self.final_epsilon
-        epsilon = max(self.final_epsilon, self.initial_epsilon - decay * decay_delta)
-        self.step_counter += batch_size
-
-        if np.random.rand() < epsilon:
+        if torch.rand(1).item() < epsilon:
             random = torch.rand_like(mask, dtype=torch.float32)
-            inf_mask = (1 - mask) * -1e9
-            outputs[QF_PREDS] = torch.zeros_like(random, dtype=torch.float32)
-            outputs[Columns.ACTION_DIST_INPUTS] = random + inf_mask
+            inf_mask = (1 - mask) * -1e8
+            return {
+                Columns.ACTION_DIST_INPUTS: random + inf_mask,
+            }
 
         return outputs
 
     def _forward_train(self, batch, **kwargs):
-        outputs = self._common_forward(batch, obs_key=Columns.OBS)
+        outputs = self._common_forward(batch)
+        outputs[QF_PREDS] = outputs[Columns.ACTION_DIST_INPUTS]
 
         if Columns.NEXT_OBS in batch:
             next_batch = {Columns.OBS: batch[Columns.NEXT_OBS]}
+
+            online_output = self._common_forward(next_batch)
             target_output = self.forward_target(next_batch)
 
             outputs[QF_TARGET_NEXT_PREDS] = target_output[QF_PREDS]
-            outputs[QF_NEXT_PREDS] = outputs[QF_PREDS]
+            outputs[QF_NEXT_PREDS] = online_output[Columns.ACTION_DIST_INPUTS]
 
         return outputs
 
-    def _common_forward(self, batch, obs_key=Columns.OBS):
-        obs = batch[obs_key]["observations"].long()
-        mask = batch[obs_key]["action_mask"]
+    def _common_forward(self, batch):
+        obs = batch[Columns.OBS]["observations"].long()
+        mask = batch[Columns.OBS]["action_mask"]
 
         embedded = self.embedding(obs)
         flat_obs = embedded.view(obs.shape[0], -1)
         q_values = self.net(flat_obs)
 
-        inf_mask = (1 - mask) * -1e9
+        inf_mask = (1 - mask) * -1e8
         masked_q_values = q_values + inf_mask
 
         return {
-            QF_PREDS: masked_q_values,
             Columns.ACTION_DIST_INPUTS: masked_q_values,
         }
