@@ -20,6 +20,9 @@ import datetime
 
 from tqdm import tqdm
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 os.environ["RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"] = "0"
@@ -43,11 +46,11 @@ def main():
     else:
         print("NO GPU SUPPORT")
 
-    learning_rate = 0.0001
-    iterations = 256
+    learning_rate = 1e-5
+    iterations = 2048
     num_env_runners = 16
     num_envs_per_env_runner = 8
-    replay_buffer_capacity = 65536 * 16
+    replay_buffer_capacity = 65536 * 32
     dueling = True
     double_q = True
     train_batch_size = 1024
@@ -127,23 +130,39 @@ def main():
     # For batch_size = 1024, env_runner = 16, envs_per_runner = 32:
     # Each runner gets: 1024 / 16 = 64 steps
     # Each env advances by: 64 / 8 = 8 steps
+    mean_return = [0.0] * iterations
+    epsilons = [1.0] * iterations
+
     pbar = tqdm(range(iterations))
     for i in pbar:
         results = algo.train()
-        epsilon = max(0.05, 1.0 - (1.0 - 0.05) * i / iterations)
+        epsilon = max(0.05, 1.0 - (1.0 - 0.05) * (i / iterations / 0.67))
         algo.env_runner_group.foreach_env_runner(
             lambda w: w.module["p0"].model_config.update({"epsilon": epsilon})
         )
 
         eval_runners = results.get(EVALUATION_RESULTS, {}).get(ENV_RUNNER_RESULTS, {})
         agent_returns = eval_runners.get("agent_episode_returns_mean", {})
-        win = agent_returns.get("Player 1", 0.0)
-        pbar.set_description(f"Avg vs rand: eps: {epsilon:.3f} wins: {win:.3f}")
+        mean = agent_returns.get("Player 1", 0.0)
+        mean_return[i] = mean
+        epsilons[i] = epsilon
+        pbar.set_description(f"Avg vs rand: eps: {epsilon:.3f} wins: {mean:.3f}")
 
     timestamp = datetime.datetime.now()
-    path = Path(f"./checkpoints/dqn/{timestamp}").resolve()
-    os.makedirs(path, exist_ok=True)
-    algo.save(path)
+    algo_path = Path(f"./checkpoints/dqn/{timestamp}").resolve()
+    plots_path = Path(f"./checkpoints/dqn/{timestamp}/plots").resolve()
+    os.makedirs(algo_path, exist_ok=True)
+    os.makedirs(plots_path, exist_ok=True)
+    algo.save(algo_path)
+
+    xs = np.array([i for i in range(iterations)])
+    ys = np.array(mean_return)
+    es = np.array(epsilons)
+
+    plt.plot(xs, ys, label="mean reward")
+    plt.plot(xs, es, "-", label="epsilon")
+
+    plt.savefig(f"{plots_path}/mean_reward.svg")
 
 
 if __name__ == "__main__":
