@@ -19,4 +19,7 @@ services:
       - PATH="/opt/venv/bin:$PATH"
       - PYTHONPATH=/app/src
       - HSA_OVERRIDE_GFX_VERSION=10.3.0
+      - CUDA_VISIBLE_DEVICES=0
+      - HIP_VISIBLE_DEVICES=0
+      - ROCR_VISIBLE_DEVICES=0
     shm_size: '16gb'

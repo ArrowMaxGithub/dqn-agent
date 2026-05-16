@@ -48,7 +48,7 @@ class RandomMaskedRLModule(TorchRLModule):
 
     def _common_forward(self, batch, obs_key=Columns.OBS):
         mask = batch[obs_key]["action_mask"]
-        q_values = torch.zeros_like(mask, dtype=torch.float32)
+        q_values = torch.rand_like(mask, dtype=torch.float32)
 
         inf_mask = (1 - mask) * -1e34
         masked_q_values = q_values + inf_mask

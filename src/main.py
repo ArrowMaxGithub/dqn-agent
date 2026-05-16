@@ -4,17 +4,20 @@ import warnings
 
 import ray
 import torch
-from prettytable import PrettyTable
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.tune.registry import register_env
+from ray.rllib.utils.metrics import EVALUATION_RESULTS, ENV_RUNNER_RESULTS
 
 from dqn_agent import DQNMaskedRLModule
 from durak_env import DurakEnv
 from random_agent import RandomMaskedRLModule
+
+from pathlib import Path
+import datetime
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -40,17 +43,17 @@ def main():
         print("NO GPU SUPPORT")
 
     learning_rate = 1e-5
-    episodes = 1024  # 1 Episode = 1 Full game
-    num_env_runners = 16
-    num_envs_per_env_runner = 32
+    iterations = 64
+    num_env_runners = 14
+    num_envs_per_env_runner = 6
     replay_buffer_capacity = 65536 * 16
     initial_epsilon = 1.0
     final_epsilon = 0.1
     dueling = False
     double_q = False
-    train_batch_size = 2048
+    train_batch_size = 4096
 
-    steps_to_final_epsilon = episodes * train_batch_size
+    steps_to_final_epsilon = iterations * train_batch_size
 
     config = (
         DQNConfig()
@@ -82,7 +85,10 @@ def main():
                 }
             )
         )
-        .resources(num_gpus=1)
+        .learners(
+            num_learners=1,
+            num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
+        )
         .env_runners(
             num_env_runners=num_env_runners,
             num_envs_per_env_runner=num_envs_per_env_runner,
@@ -96,13 +102,14 @@ def main():
             epsilon=[(0, initial_epsilon), (steps_to_final_epsilon, final_epsilon)],
             dueling=dueling,
             double_q=double_q,
-            train_batch_size=train_batch_size,
+            train_batch_size_per_learner=train_batch_size,
+            num_steps_sampled_before_learning_starts=train_batch_size,
         )
         .evaluation(
             evaluation_interval=1,
-            evaluation_num_env_runners=16,
+            evaluation_num_env_runners=5,
             evaluation_duration_unit="episodes",
-            evaluation_duration=64,
+            evaluation_duration=100,
             evaluation_config=DQNConfig.overrides(
                 policy_mapping_fn=lambda aid, *args, **kwargs: (
                     "p0" if aid == "Player 1" else "random"
@@ -112,34 +119,25 @@ def main():
     )
 
     algo = config.build_algo()
-    for e in range(episodes):
+
+    # For each iteration => train_batch_size environment steps are generated
+    # These are distributed across all env_runners
+    # Each env_runner distributes its allocated steps to their environments
+    #
+    # For batch_size = 2048, env_runner = 16, envs_per_runner = 32:
+    # Each runner gets: 2048 / 16 = 128 steps
+    # Each env advances by: 128 / 32 = 4 steps
+    for i in range(iterations):
         results = algo.train()
-        episode_return_mean = results["evaluation"]["env_runners"][
-            "agent_episode_returns_mean"
-        ]["Player 1"]
-        print(f"Episode {e} return mean vs random: {episode_return_mean:.3f}")
+        eval_runners = results.get(EVALUATION_RESULTS, {}).get(ENV_RUNNER_RESULTS, {})
+        agent_returns = eval_runners.get("agent_episode_returns_mean", {})
+        episode_return_mean = agent_returns.get("Player 1", 0.0)
+        print(f"Iteration {i} vs random: {episode_return_mean:.3f}")
 
-
-def print_epoch_results(epoch_results):
-    table = PrettyTable()
-    table.field_names = ["Pairing", "Epoch", "Wins", "Draws", "Losses"]
-    for (epoch, a0, a1), r in epoch_results.items():
-        wins = f"{r[0]:.2f}"
-        draws = f"{r[1]:.2f}"
-        losses = f"{r[2]:.2f}"
-        table.add_row([f"{a0} vs {a1}", epoch, wins, draws, losses])
-    print(table)
-
-
-def print_results(results):
-    table = PrettyTable()
-    table.field_names = ["Pairing", "Wins", "Draws", "Losses"]
-    for (a0, a1), r in results.items():
-        wins = f"{r[0]:.2f}"
-        draws = f"{r[1]:.2f}"
-        losses = f"{r[2]:.2f}"
-        table.add_row([f"{a0} vs {a1}", wins, draws, losses])
-    print(table)
+    timestamp = datetime.datetime.now()
+    path = Path(f"./checkpoints/dqn/{timestamp}").resolve()
+    os.makedirs(path, exist_ok=True)
+    algo.save(path)
 
 
 if __name__ == "__main__":
