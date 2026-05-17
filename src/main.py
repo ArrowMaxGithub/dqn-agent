@@ -134,9 +134,10 @@ def main():
     )
     warmup_iterations = num_steps_sampled_before_learning_starts // steps_per_iteration
 
+    set_epsilon(epsilon=1.0, algo=algo)
+
     pbar = tqdm(range(warmup_iterations))
     for i in pbar:
-        set_epsilon(epsilon=1.0, algo=algo)
         results = algo.train()
         eval_runners = results.get(EVALUATION_RESULTS, {}).get(ENV_RUNNER_RESULTS, {})
         agent_returns = eval_runners.get("agent_episode_returns_mean", {})

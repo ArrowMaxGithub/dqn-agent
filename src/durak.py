@@ -94,12 +94,9 @@ class GameState:
     # Da wir Enum im Enum haben bei card:
     # card.value = CardValue.NAME z.B. King, card.value.value = INT z.B. 13.
 
-    def setup(self, player_count: int, seed=None) -> None:
+    def setup(self, player_count: int) -> None:
         if player_count != 2:
             raise ValueError("This implementation only supports 2 players.")
-
-        if seed is not None:
-            random.seed(seed)
 
         deck = self._create_shuffled_deck()
 

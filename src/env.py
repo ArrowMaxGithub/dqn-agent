@@ -60,7 +60,6 @@ class Cardgame(ParallelEnv):
         }
 
     def reset(self, *, seed=None, options=None):
-        np.random.seed(seed)
         self.winner = None
         self.agents = list(self.possible_agents)
         self.deck = list(self.full_deck)
