@@ -33,19 +33,19 @@ def main():
     else:
         print("NO GPU SUPPORT")
 
-    experiment_name = "2026_05_17_n_step_1"
+    experiment_name = "2026_05_17_n_step_10"
     learning_rate = 1e-4
-    iterations = 64
+    iterations = 512
     num_env_runners = 16
     num_envs_per_env_runner = 8
     replay_buffer_capacity = 65536 * 16
     dueling = True
     double_q = True
     train_batch_size = 2048
-    num_steps_sampled_before_learning_starts = 65536 * 8
+    num_steps_sampled_before_learning_starts = 65536 * 4
     target_network_update_freq = train_batch_size * 4
     td_error_loss_fn = "huber"
-    n_step = 1
+    n_step = 10
     adam_epsilon = 1e-3
     grad_clip = 10.0
     tau = 1.0
@@ -136,16 +136,26 @@ def main():
 
     set_epsilon(epsilon=1.0, algo=algo)
 
+    mean_rewards = []
+    epsilons = []
+
+    algo_path = Path(f"./checkpoints/dqn/{experiment_name}").resolve()
+    plots_path = Path(f"./checkpoints/dqn/{experiment_name}/plots").resolve()
+    os.makedirs(algo_path, exist_ok=True)
+    os.makedirs(plots_path, exist_ok=True)
+
     pbar = tqdm(range(warmup_iterations))
     for i in pbar:
         results = algo.train()
         eval_runners = results.get(EVALUATION_RESULTS, {}).get(ENV_RUNNER_RESULTS, {})
         agent_returns = eval_runners.get("agent_episode_returns_mean", {})
         mean = agent_returns.get("Player 1", 0.0)
+        mean_rewards.append(mean)
+        epsilons.append(1.0)
+        save_plot(
+            f"{plots_path}/mean_reward.svg", warmup_iterations, mean_rewards, epsilons
+        )
         pbar.set_description(f"Warmup vs rand: eps: {1.0} wins: {mean:.3f}")
-
-    mean_return = []
-    epsilons = []
 
     try:
         pbar = tqdm(range(iterations))
@@ -159,25 +169,33 @@ def main():
             )
             agent_returns = eval_runners.get("agent_episode_returns_mean", {})
             mean = agent_returns.get("Player 1", 0.0)
-            mean_return.append(mean)
+            mean_rewards.append(mean)
             epsilons.append(epsilon)
+            save_plot(
+                f"{plots_path}/mean_reward.svg",
+                warmup_iterations,
+                mean_rewards,
+                epsilons,
+            )
             pbar.set_description(f"Avg vs rand: eps: {epsilon:.3f} wins: {mean:.3f}")
 
-        algo_path = Path(f"./checkpoints/dqn/{experiment_name}").resolve()
-        plots_path = Path(f"./checkpoints/dqn/{experiment_name}/plots").resolve()
-        os.makedirs(algo_path, exist_ok=True)
-        os.makedirs(plots_path, exist_ok=True)
         algo.save(algo_path)
 
     finally:
-        length = min(len(mean_return), len(epsilons))
-        xs = np.array([i for i in length])
-        ys = np.array(mean_return[:length])
-        es = np.array(epsilons[:length])
+        save_plot(
+            f"{plots_path}/mean_reward.svg", warmup_iterations, mean_rewards, epsilons
+        )
 
-        plt.plot(xs, ys, label="mean reward")
-        plt.plot(xs, es, "-", label="epsilon")
-        plt.savefig(f"{plots_path}/mean_reward.svg")
+
+def save_plot(path, warmup_iterations, mean_rewards, epsilons):
+    length = min(len(mean_rewards), len(epsilons))
+    xs = np.array([i - warmup_iterations for i in range(length)])
+    ys = np.array(mean_rewards[:length])
+    es = np.array(epsilons[:length])
+
+    plt.plot(xs, ys, label="mean reward")
+    plt.plot(xs, es, label="epsilon")
+    plt.savefig(path)
 
 
 def validate():
