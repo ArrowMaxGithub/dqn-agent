@@ -36,11 +36,7 @@ class RandomMaskedRLModule(InferenceOnlyAPI, TorchRLModule):
 
     def _common_forward(self, batch):
         mask = batch[Columns.OBS]["action_mask"]
-        random = torch.rand_like(mask, dtype=torch.float32)
-
+        noise = torch.rand_like(mask, dtype=torch.float32)
         inf_mask = (1 - mask) * -1e8
-        legal = random + inf_mask
-
-        return {
-            Columns.ACTION_DIST_INPUTS: legal,
-        }
+        actions = torch.argmax(noise + inf_mask, dim=-1)
+        return {Columns.ACTIONS: actions}

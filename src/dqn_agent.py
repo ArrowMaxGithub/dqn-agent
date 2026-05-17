@@ -61,7 +61,7 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
         with torch.no_grad():
             mask = batch[Columns.OBS]["action_mask"]
             outputs = self._common_forward(batch)
-            epsilon = self._get_epsilon()
+            epsilon = self.model_config.get("epsilon", 0.0)
             B = mask.shape[0]
 
             exploit_actions = torch.argmax(outputs[Columns.ACTION_DIST_INPUTS], dim=-1)

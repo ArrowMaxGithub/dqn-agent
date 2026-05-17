@@ -22,6 +22,7 @@ from random_agent import RandomAgent, RandomMaskedRLModule
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 os.environ["RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO"] = "0"
+os.environ["RAY_DEDUP_LOGS"] = "0"
 logging.getLogger("ray").setLevel(logging.ERROR)
 ray.init(logging_level=logging.ERROR, configure_logging=True, ignore_reinit_error=True)
 
@@ -34,14 +35,14 @@ def main():
 
     experiment_name = "2026_05_17_n_step_1"
     learning_rate = 1e-4
-    iterations = 1024
-    num_env_runners = 8
-    num_envs_per_env_runner = 4
+    iterations = 64
+    num_env_runners = 16
+    num_envs_per_env_runner = 8
     replay_buffer_capacity = 65536 * 16
     dueling = True
     double_q = True
     train_batch_size = 2048
-    num_steps_sampled_before_learning_starts = 65536 * 4
+    num_steps_sampled_before_learning_starts = 65536 * 8
     target_network_update_freq = train_batch_size * 4
     td_error_loss_fn = "huber"
     n_step = 1
@@ -111,7 +112,7 @@ def main():
             evaluation_interval=1,
             evaluation_num_env_runners=16,
             evaluation_duration_unit="episodes",
-            evaluation_duration=1000,
+            evaluation_duration=100,
             evaluation_config=DQNConfig.overrides(
                 policy_mapping_fn=lambda aid, *args, **kwargs: (
                     "p0" if aid == "Player 1" else "opponent"
@@ -135,6 +136,7 @@ def main():
 
     pbar = tqdm(range(warmup_iterations))
     for i in pbar:
+        set_epsilon(epsilon=1.0, algo=algo)
         results = algo.train()
         eval_runners = results.get(EVALUATION_RESULTS, {}).get(ENV_RUNNER_RESULTS, {})
         agent_returns = eval_runners.get("agent_episode_returns_mean", {})
