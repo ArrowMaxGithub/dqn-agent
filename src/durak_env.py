@@ -55,7 +55,7 @@ class DurakEnv(ParallelEnv):
         }
 
     def reset(self, *, seed=None, options=None):
-        # np.random.seed(seed)
+        np.random.seed(seed)
         self.gamestate.setup(2)
         self.agents = list(self.possible_agents)
         self.trump_card = self.gamestate.draw_pile[0]
@@ -78,8 +78,6 @@ class DurakEnv(ParallelEnv):
         }
         self.infos = {agent: {} for agent in self.agents}
         state = self._update_agents_data()
-
-        self.turn_count = 0
 
         return state[0], state[4]
 
@@ -225,12 +223,11 @@ class DurakEnv(ParallelEnv):
         self._accumulate_rewards()
         state = self._update_agents_data()
 
-        for agent_ids in self.possible_agents:
-            if self.terminateds[agent_ids] or self.truncateds[agent_ids]:
-                self._remove_agent(agent_ids)
+        for agent in self.possible_agents:
+            if self.terminateds[agent] or self.truncateds[agent]:
+                self._remove_agent(agent)
 
         self.agent_selection = self.next_player
-        self.turn_count += 1
 
         return state
 
@@ -320,8 +317,7 @@ class DurakEnv(ParallelEnv):
         self.observations[agent]["action_mask"] = action_mask
 
     def _remove_agent(self, agent):
-        if agent in self.agents:
-            self.agents.remove(agent)
+        self.agents.remove(agent)
 
     def _clear_rewards(self):
         for agent in self.agents:

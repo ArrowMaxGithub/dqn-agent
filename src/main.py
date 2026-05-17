@@ -11,14 +11,15 @@ from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.tune.registry import register_env
 from ray.rllib.utils.metrics import EVALUATION_RESULTS, ENV_RUNNER_RESULTS
 
-from dqn_agent import DQNMaskedRLModule
+from dqn_agent import DQNMaskedRLModule, DQNAgent
 from durak_env import DurakEnv
-from random_agent import RandomMaskedRLModule
+from random_agent import RandomMaskedRLModule, RandomAgent
 
 from pathlib import Path
 import datetime
 
 from tqdm import tqdm
+from test import test
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -30,7 +31,11 @@ logging.getLogger("ray").setLevel(logging.ERROR)
 ray.init(logging_level=logging.ERROR, configure_logging=True, ignore_reinit_error=True)
 
 
-def env_creator(cfg):
+def raw_env_creator(cfg=None):
+    return DurakEnv()
+
+
+def env_creator(cfg=None):
     return ParallelPettingZooEnv(DurakEnv())
 
 
@@ -46,15 +51,26 @@ def main():
     else:
         print("NO GPU SUPPORT")
 
+    # dqn = DQNAgent.load("checkpoints/dqn/test")
+    # rand = RandomAgent(36)
+
+    # results = test(env_factory=raw_env_creator, agents=(dqn, rand), n_episodes=10000)
+    # wins = results[0]
+    # losses = results[2]
+    # print(f"{wins:.2f}% | {losses:.2f}%")
+
+    # return
+
     learning_rate = 1e-5
-    iterations = 2048
+    iterations = 1024
     num_env_runners = 16
     num_envs_per_env_runner = 8
-    replay_buffer_capacity = 65536 * 32
+    replay_buffer_capacity = 65536 * 16
     dueling = True
     double_q = True
     train_batch_size = 1024
     num_steps_sampled_before_learning_starts = train_batch_size * 4
+    target_network_update_freq = train_batch_size
 
     config = (
         DQNConfig()
@@ -79,7 +95,6 @@ def main():
                 rl_module_specs={
                     "p0": RLModuleSpec(
                         module_class=DQNMaskedRLModule,
-                        model_config={},
                     ),
                     "random": RLModuleSpec(
                         module_class=RandomMaskedRLModule,
@@ -106,7 +121,8 @@ def main():
             double_q=double_q,
             train_batch_size_per_learner=train_batch_size,
             num_steps_sampled_before_learning_starts=num_steps_sampled_before_learning_starts,
-            epsilon=1.0,
+            epsilon=1.0,  # Set in training iteration
+            target_network_update_freq=target_network_update_freq,
         )
         .evaluation(
             evaluation_interval=1,
@@ -123,6 +139,9 @@ def main():
 
     algo = config.build_algo()
 
+    mean_return = [0.0] * iterations
+    epsilons = [1.0] * iterations
+
     # For each iteration => train_batch_size environment steps are generated
     # These are distributed across all env_runners
     # Each env_runner distributes its allocated steps to their environments
@@ -130,9 +149,6 @@ def main():
     # For batch_size = 1024, env_runner = 16, envs_per_runner = 32:
     # Each runner gets: 1024 / 16 = 64 steps
     # Each env advances by: 64 / 8 = 8 steps
-    mean_return = [0.0] * iterations
-    epsilons = [1.0] * iterations
-
     pbar = tqdm(range(iterations))
     for i in pbar:
         results = algo.train()

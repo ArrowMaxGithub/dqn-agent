@@ -15,12 +15,10 @@ class RandomAgent:
     def get_label(self):
         return "RandomAgent"
 
-    def get_action(self, obs_dict, force_exploitation=True):
+    def get_action(self, obs_dict):
         mask = obs_dict["action_mask"]
         legal_actions = np.where(mask == 1)[0]
         return np.random.choice(legal_actions)
-
-    def update(last_obs, action, reward, term, obs): ...
 
 
 class RandomMaskedRLModule(InferenceOnlyAPI, TorchRLModule):
