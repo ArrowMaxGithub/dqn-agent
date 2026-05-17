@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import warnings
@@ -34,22 +35,42 @@ def main():
         print("NO GPU SUPPORT")
 
     experiment_name = "2026_05_18"
-    learning_rate = 1e-4
-    iterations = 256
-    num_env_runners = 16
-    num_envs_per_env_runner = 8
-    replay_buffer_capacity = 65536 * 16
-    double_q = True
-    train_batch_size = 2048
-    num_steps_sampled_before_learning_starts = 65536 * 4
-    target_network_update_freq = 4
-    td_error_loss_fn = "huber"
-    n_step = 5
-    adam_epsilon = 1e-3
-    grad_clip = 4.0
-    tau = 0.005
-    gamma = 0.99
-    training_intensity = 1.0
+    parameters = {
+        "learning_rate": 1e-4,
+        "iterations": 16384,
+        "num_env_runners": 16,
+        "num_envs_per_env_runner": 8,
+        "replay_buffer_capacity": 65536 * 16,
+        "double_q": True,
+        "train_batch_size": 2048,
+        "num_steps_sampled_before_learning_starts": 65536 * 4,
+        "target_network_update_freq": 4,
+        "td_error_loss_fn": "huber",
+        "n_step": 5,
+        "adam_epsilon": 1e-3,
+        "grad_clip": 4.0,
+        "grad_clip_by": "global_norm",
+        "tau": 0.005,
+        "gamma": 0.99,
+        "training_intensity": 1.0,
+        "warmup_eval_episodes": 10,
+        "training_eval_episodes": 100,
+    }
+
+    parameters["distributed_batch_size"] = parameters["train_batch_size"] // (
+        parameters["num_env_runners"] * parameters["num_envs_per_env_runner"]
+    )
+
+    parameters["steps_per_iteration"] = (
+        parameters["num_env_runners"]
+        * parameters["num_envs_per_env_runner"]
+        * parameters["distributed_batch_size"]
+    )
+
+    parameters["warmup_iterations"] = (
+        parameters["num_steps_sampled_before_learning_starts"]
+        // parameters["steps_per_iteration"]
+    )
 
     config = (
         DQNConfig()
@@ -85,75 +106,75 @@ def main():
             num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
         )
         .env_runners(
-            num_env_runners=num_env_runners,
-            num_envs_per_env_runner=num_envs_per_env_runner,
+            num_env_runners=parameters["num_env_runners"],
+            num_envs_per_env_runner=parameters["num_envs_per_env_runner"],
         )
         .training(
             replay_buffer_config={
                 "type": "MultiAgentEpisodeReplayBuffer",
-                "capacity": replay_buffer_capacity,
+                "capacity": parameters["replay_buffer_capacity"],
             },
-            lr=learning_rate,
-            double_q=double_q,
-            train_batch_size_per_learner=train_batch_size,
-            num_steps_sampled_before_learning_starts=num_steps_sampled_before_learning_starts,
-            target_network_update_freq=target_network_update_freq,
-            td_error_loss_fn=td_error_loss_fn,
-            n_step=n_step,
-            adam_epsilon=adam_epsilon,
-            grad_clip=grad_clip,
-            tau=tau,
-            gamma=gamma,
-            grad_clip_by=grad_clip,
-            training_intensity=training_intensity,
+            lr=parameters["learning_rate"],
+            double_q=parameters["double_q"],
+            train_batch_size_per_learner=parameters["train_batch_size"],
+            num_steps_sampled_before_learning_starts=parameters[
+                "num_steps_sampled_before_learning_starts"
+            ],
+            target_network_update_freq=parameters["target_network_update_freq"],
+            td_error_loss_fn=parameters["td_error_loss_fn"],
+            n_step=parameters["n_step"],
+            adam_epsilon=parameters["adam_epsilon"],
+            grad_clip=parameters["grad_clip"],
+            tau=parameters["tau"],
+            gamma=parameters["gamma"],
+            grad_clip_by=parameters["grad_clip_by"],
+            training_intensity=parameters["training_intensity"],
         )
         .evaluation(
             evaluation_interval=1,
             evaluation_num_env_runners=16,
             evaluation_duration_unit="episodes",
-            evaluation_duration=1000,
+            evaluation_duration=parameters["warmup_eval_episodes"],
         )
     )
 
     algo = config.build_algo()
-    algo.env_runner_group.foreach_env_runner(
-        lambda w: w.module["p0"].model_config.update({"epsilon": 1.0})
-    )
-
-    steps_per_iteration = (
-        num_env_runners
-        * num_envs_per_env_runner
-        * (train_batch_size // (num_env_runners * num_envs_per_env_runner))
-    )
-    warmup_iterations = num_steps_sampled_before_learning_starts // steps_per_iteration
-
     set_epsilon(epsilon=1.0, algo=algo)
+
+    checkpoint_path = Path(f"./checkpoints/dqn/{experiment_name}").resolve()
+    plots_path = Path(f"./checkpoints/dqn/{experiment_name}/plots").resolve()
+    os.makedirs(checkpoint_path, exist_ok=True)
+    os.makedirs(plots_path, exist_ok=True)
+    save_parameters(f"{checkpoint_path}/parameters.json", parameters)
 
     mean_rewards = []
     epsilons = []
 
-    algo_path = Path(f"./checkpoints/dqn/{experiment_name}").resolve()
-    plots_path = Path(f"./checkpoints/dqn/{experiment_name}/plots").resolve()
-    os.makedirs(algo_path, exist_ok=True)
-    os.makedirs(plots_path, exist_ok=True)
-
-    pbar = tqdm(range(warmup_iterations))
-    for i in pbar:
-        results = algo.train()
-        eval_runners = results.get(EVALUATION_RESULTS, {}).get(ENV_RUNNER_RESULTS, {})
-        agent_returns = eval_runners.get("agent_episode_returns_mean", {})
-        mean = agent_returns.get("Player 1", 0.0)
-        mean_rewards.append(mean)
-        epsilons.append(1.0)
-        save_plot(
-            f"{plots_path}/mean_reward.svg", warmup_iterations, mean_rewards, epsilons
-        )
-        pbar.set_description(f"Warmup vs rand: eps: {1.0} wins: {mean:.3f}")
-
     try:
-        pbar = tqdm(range(iterations))
+        pbar = tqdm(range(parameters["warmup_iterations"]))
         for i in pbar:
-            epsilon = max(0.05, 1.0 - (1.0 - 0.05) * (i / iterations / 0.67))
+            results = algo.train()
+            eval_runners = results.get(EVALUATION_RESULTS, {}).get(
+                ENV_RUNNER_RESULTS, {}
+            )
+            agent_returns = eval_runners.get("agent_episode_returns_mean", {})
+            mean = agent_returns.get("Player 1", 0.0)
+            mean_rewards.append(mean)
+            epsilons.append(1.0)
+            save_plot(
+                f"{plots_path}/mean_reward.svg",
+                parameters["warmup_iterations"],
+                mean_rewards,
+                epsilons,
+            )
+            pbar.set_description(f"Warmup vs rand: eps: {1.0} wins: {mean:.3f}")
+
+        algo.config.evaluation_duration = parameters["training_eval_episodes"]
+        pbar = tqdm(range(parameters["iterations"]))
+        for i in pbar:
+            epsilon = max(
+                0.05, 1.0 - (1.0 - 0.05) * (i / parameters["iterations"] / 0.67)
+            )
             set_epsilon(epsilon=epsilon, algo=algo)
             results = algo.train()
 
@@ -166,18 +187,25 @@ def main():
             epsilons.append(epsilon)
             save_plot(
                 f"{plots_path}/mean_reward.svg",
-                warmup_iterations,
+                parameters["warmup_iterations"],
                 mean_rewards,
                 epsilons,
             )
             pbar.set_description(f"Avg vs rand: eps: {epsilon:.3f} wins: {mean:.3f}")
 
-        algo.save(algo_path)
-
     finally:
+        algo.save(checkpoint_path)
         save_plot(
-            f"{plots_path}/mean_reward.svg", warmup_iterations, mean_rewards, epsilons
+            f"{plots_path}/mean_reward.svg",
+            parameters["warmup_iterations"],
+            mean_rewards,
+            epsilons,
         )
+
+
+def save_parameters(path, parameters):
+    with open(path, "w") as f:
+        json.dump(parameters, f, indent=True)
 
 
 def save_plot(path, warmup_iterations, mean_rewards, epsilons):
