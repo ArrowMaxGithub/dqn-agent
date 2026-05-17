@@ -137,8 +137,8 @@ class DQNAgent:
     def get_action(self, obs_dict):
         module = self.algo.get_module("p0")
         batch_input = self._get_batch_input(obs_dict)
-        output = module.forward_inference(batch_input)
-        return torch.argmax(output[Columns.ACTION_DIST_INPUTS], dim=-1).item()
+        actions = module._forward_inference(batch_input)
+        return actions[Columns.ACTIONS].item()
 
     def _get_batch_input(self, obs_dict, next_obs_dict=None):
         batch_input = {

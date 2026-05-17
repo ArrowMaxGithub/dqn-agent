@@ -15,9 +15,9 @@ from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EVALUATION_RESULTS
 from ray.tune.registry import register_env
 from tqdm import tqdm
 
-from dqn_agent import DQNAgent, DQNMaskedRLModule
+from dqn_agent import DQNMaskedRLModule
 from durak_env import DurakEnv
-from random_agent import RandomAgent, RandomMaskedRLModule
+from random_agent import RandomMaskedRLModule
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -33,22 +33,23 @@ def main():
     else:
         print("NO GPU SUPPORT")
 
-    experiment_name = "2026_05_17_n_step_10"
+    experiment_name = "2026_05_18"
     learning_rate = 1e-4
-    iterations = 512
+    iterations = 256
     num_env_runners = 16
     num_envs_per_env_runner = 8
     replay_buffer_capacity = 65536 * 16
-    dueling = True
     double_q = True
     train_batch_size = 2048
     num_steps_sampled_before_learning_starts = 65536 * 4
-    target_network_update_freq = train_batch_size * 4
+    target_network_update_freq = 4
     td_error_loss_fn = "huber"
-    n_step = 10
+    n_step = 5
     adam_epsilon = 1e-3
-    grad_clip = 10.0
-    tau = 1.0
+    grad_clip = 4.0
+    tau = 0.005
+    gamma = 0.99
+    training_intensity = 1.0
 
     config = (
         DQNConfig()
@@ -63,9 +64,7 @@ def main():
         )
         .multi_agent(
             policies={"p0", "opponent"},
-            policy_mapping_fn=lambda aid, *args, **kwargs: (
-                "p0" if aid == "Player 1" else "opponent"
-            ),
+            policy_mapping_fn=policy_mapping_fn,
             policies_to_train=["p0"],
         )
         .rl_module(
@@ -73,7 +72,6 @@ def main():
                 rl_module_specs={
                     "p0": RLModuleSpec(
                         module_class=DQNMaskedRLModule,
-                        model_config={"epsilon": 1.0},
                     ),
                     "opponent": RLModuleSpec(
                         module_class=RandomMaskedRLModule,
@@ -96,29 +94,24 @@ def main():
                 "capacity": replay_buffer_capacity,
             },
             lr=learning_rate,
-            dueling=dueling,
             double_q=double_q,
             train_batch_size_per_learner=train_batch_size,
             num_steps_sampled_before_learning_starts=num_steps_sampled_before_learning_starts,
-            epsilon=1.0,  # Set during training iteration
             target_network_update_freq=target_network_update_freq,
             td_error_loss_fn=td_error_loss_fn,
             n_step=n_step,
             adam_epsilon=adam_epsilon,
             grad_clip=grad_clip,
             tau=tau,
+            gamma=gamma,
+            grad_clip_by=grad_clip,
+            training_intensity=training_intensity,
         )
         .evaluation(
             evaluation_interval=1,
             evaluation_num_env_runners=16,
             evaluation_duration_unit="episodes",
-            evaluation_duration=100,
-            evaluation_config=DQNConfig.overrides(
-                policy_mapping_fn=lambda aid, *args, **kwargs: (
-                    "p0" if aid == "Player 1" else "opponent"
-                ),
-                epsilon=0.0,
-            ),
+            evaluation_duration=1000,
         )
     )
 
@@ -198,30 +191,15 @@ def save_plot(path, warmup_iterations, mean_rewards, epsilons):
     plt.savefig(path)
 
 
-def validate():
-    dqn = DQNAgent.load("checkpoints/dqn/test")
-    rand = RandomAgent(36)
-
-    results = validate(
-        env_factory=raw_env_creator, agents=(dqn, rand), n_episodes=10000
-    )
-    wins = results[0]
-    losses = results[2]
-    print(f"{wins:.2f}% | {losses:.2f}%")
-
-
 def set_epsilon(epsilon: float, algo) -> None:
     algo.env_runner_group.foreach_env_runner(
         lambda w: w.module["p0"].model_config.update({"epsilon": epsilon})
     )
-    if algo.eval_env_runner_group is not None:
-        algo.eval_env_runner_group.foreach_env_runner(
-            lambda w: w.module["p0"].model_config.update({"epsilon": 0.0})
-        )
 
 
-def raw_env_creator(cfg=None):
-    return DurakEnv()
+def policy_mapping_fn(aid, *args, **kwargs):
+    assert aid in ("Player 1", "Player 2"), f"Unexpected agent ID: {aid!r}"
+    return "p0" if aid == "Player 1" else "opponent"
 
 
 def env_creator(cfg=None):

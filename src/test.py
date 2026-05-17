@@ -24,7 +24,7 @@ def test(env_factory, agents, n_episodes) -> (float, float, float):
         while env.agents:
             actions = {
                 agent_id: agents_dict[agent_id].get_action(obss[agent_id])
-                for agent_id in env.agents
+                for agent_id in obss.keys()
             }
 
             obss, rewards, terms, truncs, infos = env.step(actions)
