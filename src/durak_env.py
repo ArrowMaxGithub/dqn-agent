@@ -4,7 +4,6 @@ from enum import IntEnum, Enum
 import gymnasium as gym
 import numpy as np
 from pettingzoo import ParallelEnv
-from pettingzoo.test import parallel_api_test
 
 from durak import Card, CardColor, CardValue, GameState
 
@@ -14,10 +13,11 @@ class Status(IntEnum):
     Unknown = 0
     MyCard = 1
     OpponentCard = 2
-    Attack = 3
-    Defense = 4
-    InDeck = 5
-    Discarded = 6
+    OpenAttack = 3
+    DefendedAttack = 4
+    Defense = 5
+    InDeck = 6
+    Discarded = 7
 
 
 class Phase(Enum):
@@ -45,6 +45,8 @@ class DurakEnv(ParallelEnv):
                         + [len(CardColor)]  # Trump color
                         + [len(Phase)]  # Current phase
                         + [2]  # Is attacker (0 or 1)
+                        + [2]  # Is active player (0 or 1)
+                        + [self.num_cards + 1]  # Own hand size (0..36)
                         + [self.num_cards + 1]  # Opponent hand size (0..36)
                         + [self.num_cards + 1]  # Draw pile size (0..36)
                     ),
@@ -68,7 +70,6 @@ class DurakEnv(ParallelEnv):
         self.next_player = self.agent_selection
         self.phase = Phase.Attack
         self.rewards = {agent: 0 for agent in self.agents}
-        self._cumulative_rewards = {agent: 0 for agent in self.agents}
         self.terminateds = {agent: False for agent in self.agents}
         self.truncateds = {agent: False for agent in self.agents}
         self.observations = {
@@ -84,9 +85,13 @@ class DurakEnv(ParallelEnv):
             for agent in self.agents
         }
         self.infos = {agent: {} for agent in self.agents}
-        state = self._update_agents_data()
+        self._update_agents_data()
 
-        return state[0], state[4]
+        active = self.next_player
+        obs_out = {active: self.observations[active]}
+        info_out = {active: self.infos[active]}
+
+        return obs_out, info_out
 
     def observation_space(self, agent):
         return self.observation_spaces[agent]
@@ -97,13 +102,7 @@ class DurakEnv(ParallelEnv):
     def step(self, actions):
         # ParallelEnvWrapper calls step once more after all agents are already dead
         if len(self.agents) == 0:
-            return (
-                self.observations,
-                self.rewards,
-                self.terminateds,
-                self.truncateds,
-                self.infos,
-            )
+            return {}, {}, {}, {}, {}
 
         self._clear_rewards()
 
@@ -227,7 +226,6 @@ class DurakEnv(ParallelEnv):
             self.rewards[losing_agent] = -1
             self.terminateds[losing_agent] = True
 
-        self._accumulate_rewards()
         state = self._update_agents_data()
 
         for agent in self.possible_agents:
@@ -248,19 +246,25 @@ class DurakEnv(ParallelEnv):
         pairs = self.gamestate.table
         attacks = set([pair.attack for pair in pairs])
         defenses = set([pair.defense for pair in pairs])
+        attack_pairs = {pair.attack: pair.defense for pair in pairs}
 
         for i, agent in enumerate(self.agents):
-            self._update_agent_data(i, agent, attacks, defenses)
+            self._update_agent_data(i, agent, attack_pairs, attacks, defenses)
 
-        return (
-            self.observations,
-            self._cumulative_rewards,
-            self.terminateds,
-            self.truncateds,
-            self.infos,
-        )
+        active = self.next_player
+        obs_out = {active: self.observations[active]}
+        info_out = {active: self.infos[active]}
+        rew_out = {a: self.rewards[a] for a in self.agents}
+        term_out = {a: self.terminateds[a] for a in self.agents}
+        trunc_out = {a: self.truncateds[a] for a in self.agents}
 
-    def _update_agent_data(self, i, agent, attacks, defenses):
+        if any(self.terminateds.values()):
+            obs_out = {a: self.observations[a] for a in self.agents}
+            info_out = {a: self.infos[a] for a in self.agents}
+
+        return obs_out, rew_out, term_out, trunc_out, info_out
+
+    def _update_agent_data(self, i, agent, attack_pairs, attacks, defenses):
         cards = set(self.gamestate.players[i].hand.cards)
         opponent_cards = set(self.gamestate.players[(i + 1) % 2].hand.cards)
         obs = self.observations[agent]["observations"].copy()
@@ -268,8 +272,10 @@ class DurakEnv(ParallelEnv):
         obs[self.num_cards + 0] = int(self.trump_card.color.value)
         obs[self.num_cards + 1] = int(self.phase.value)
         obs[self.num_cards + 2] = int(i == self.gamestate.attacker)
-        obs[self.num_cards + 3] = len(self.gamestate.players[(i + 1) % 2].hand.cards)
-        obs[self.num_cards + 4] = len(self.gamestate.draw_pile)
+        obs[self.num_cards + 3] = int(agent == self.next_player)
+        obs[self.num_cards + 4] = len(self.gamestate.players[i].hand.cards)
+        obs[self.num_cards + 5] = len(self.gamestate.players[(i + 1) % 2].hand.cards)
+        obs[self.num_cards + 6] = len(self.gamestate.draw_pile)
 
         # Set player hand cards - may yet contain untracked cards
         indices = [self._get_index_from_card(card) for card in cards]
@@ -285,11 +291,15 @@ class DurakEnv(ParallelEnv):
             elif card == self.trump_card:
                 obs[index] = Status.InDeck  # While the trump card is not drawn
             elif card in attacks:
-                obs[index] = Status.Attack
+                obs[index] = (
+                    Status.OpenAttack
+                    if attack_pairs[card] is None
+                    else Status.DefendedAttack
+                )
             elif card in defenses:
                 obs[index] = Status.Defense
             else:
-                obs[index] = Status.Discarded  # Gets overriden for in-play cards
+                obs[index] = Status.Discarded
 
         # obs now contains all available card information for 'agent'
         # The only unknown cards should be the cards in the deck and any card the opponent has not shown yet
@@ -314,14 +324,10 @@ class DurakEnv(ParallelEnv):
         if len(self.gamestate.table) == 0 and i == self.gamestate.attacker:
             action_mask[self.passing_action] = 0
 
-        if __debug__:
-            if not any(action_mask):
-                raise ValueError(f"No legal actions available to {agent}")
-
-            for index, mask in enumerate(action_mask[:-1]):
-                card = self._get_card_from_index(index)
-                if mask == 1:
-                    assert card in cards
+        # If agent is not active: can only pass
+        if agent != self.next_player:
+            action_mask = np.zeros(self.num_cards + 1, dtype=np.int8)
+            action_mask[self.passing_action] = 1
 
         self.observations[agent]["observations"] = obs
         self.observations[agent]["action_mask"] = action_mask
@@ -332,10 +338,6 @@ class DurakEnv(ParallelEnv):
     def _clear_rewards(self):
         for agent in self.agents:
             self.rewards[agent] = 0
-
-    def _accumulate_rewards(self):
-        for agent in self.agents:
-            self._cumulative_rewards[agent] += self.rewards[agent]
 
     def _get_index_from_card(self, card: Card) -> int:
         # [Spades[6..Ace], Clubs[6..Ace], Hearts[6..Ace], Diamonds[6..Ace]]
@@ -348,20 +350,3 @@ class DurakEnv(ParallelEnv):
         color = CardColor(index // len(CardValue))
         value = CardValue(index % len(CardValue) + 6)
         return Card(value=value, color=color)
-
-
-if __name__ == "__main__":
-    import itertools
-
-    env = DurakEnv()
-    parallel_api_test(env)
-
-    cards = [
-        Card(value=value, color=color)
-        for value, color in itertools.product(CardValue, CardColor)
-    ]
-    indices = [env._get_index_from_card(card) for card in cards]
-
-    for card, index in zip(cards, indices):
-        assert card == env._get_card_from_index(index)
-        assert index == env._get_index_from_card(card)

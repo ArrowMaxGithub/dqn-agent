@@ -1,28 +1,23 @@
 import logging
 import os
 import warnings
-
-import ray
-import torch
-from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
-from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
-from ray.tune.registry import register_env
-from ray.rllib.utils.metrics import EVALUATION_RESULTS, ENV_RUNNER_RESULTS
-
-from dqn_agent import DQNMaskedRLModule, DQNAgent
-from durak_env import DurakEnv
-from random_agent import RandomMaskedRLModule, RandomAgent
-
 from pathlib import Path
-import datetime
-
-from tqdm import tqdm
-from test import test
 
 import matplotlib.pyplot as plt
 import numpy as np
+import ray
+import torch
+from ray.rllib.algorithms.dqn import DQNConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EVALUATION_RESULTS
+from ray.tune.registry import register_env
+from tqdm import tqdm
+
+from dqn_agent import DQNAgent, DQNMaskedRLModule
+from durak_env import DurakEnv
+from random_agent import RandomAgent, RandomMaskedRLModule
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -31,48 +26,25 @@ logging.getLogger("ray").setLevel(logging.ERROR)
 ray.init(logging_level=logging.ERROR, configure_logging=True, ignore_reinit_error=True)
 
 
-def test():
-    dqn = DQNAgent.load("checkpoints/dqn/test")
-    rand = RandomAgent(36)
-
-    results = test(env_factory=raw_env_creator, agents=(dqn, rand), n_episodes=10000)
-    wins = results[0]
-    losses = results[2]
-    print(f"{wins:.2f}% | {losses:.2f}%")
-
-
-def raw_env_creator(cfg=None):
-    return DurakEnv()
-
-
-def env_creator(cfg=None):
-    return ParallelPettingZooEnv(DurakEnv())
-
-
-register_env(
-    "custom-cardgame-v1",
-    env_creator,
-)
-
-
 def main():
     if torch.cuda.is_available():
         print("GPU supported")
     else:
         print("NO GPU SUPPORT")
 
+    experiment_name = "2026_05_17_n_step_1"
     learning_rate = 1e-4
     iterations = 1024
-    num_env_runners = 16
-    num_envs_per_env_runner = 8
+    num_env_runners = 8
+    num_envs_per_env_runner = 4
     replay_buffer_capacity = 65536 * 16
     dueling = True
     double_q = True
-    train_batch_size = 4096
+    train_batch_size = 2048
     num_steps_sampled_before_learning_starts = 65536 * 4
     target_network_update_freq = train_batch_size * 4
     td_error_loss_fn = "huber"
-    n_step = 10
+    n_step = 1
     adam_epsilon = 1e-3
     grad_clip = 10.0
     tau = 1.0
@@ -100,6 +72,7 @@ def main():
                 rl_module_specs={
                     "p0": RLModuleSpec(
                         module_class=DQNMaskedRLModule,
+                        model_config={"epsilon": 1.0},
                     ),
                     "opponent": RLModuleSpec(
                         module_class=RandomMaskedRLModule,
@@ -168,40 +141,76 @@ def main():
         mean = agent_returns.get("Player 1", 0.0)
         pbar.set_description(f"Warmup vs rand: eps: {1.0} wins: {mean:.3f}")
 
-    mean_return = [0.0] * iterations
-    epsilons = [1.0] * iterations
-    pbar = tqdm(range(iterations))
-    for i in pbar:
-        epsilon = max(0.05, 1.0 - (1.0 - 0.05) * (i / iterations / 0.67))
-        algo.env_runner_group.foreach_env_runner(
-            lambda w: w.module["p0"].model_config.update({"epsilon": epsilon})
+    mean_return = []
+    epsilons = []
+
+    try:
+        pbar = tqdm(range(iterations))
+        for i in pbar:
+            epsilon = max(0.05, 1.0 - (1.0 - 0.05) * (i / iterations / 0.67))
+            set_epsilon(epsilon=epsilon, algo=algo)
+            results = algo.train()
+
+            eval_runners = results.get(EVALUATION_RESULTS, {}).get(
+                ENV_RUNNER_RESULTS, {}
+            )
+            agent_returns = eval_runners.get("agent_episode_returns_mean", {})
+            mean = agent_returns.get("Player 1", 0.0)
+            mean_return.append(mean)
+            epsilons.append(epsilon)
+            pbar.set_description(f"Avg vs rand: eps: {epsilon:.3f} wins: {mean:.3f}")
+
+        algo_path = Path(f"./checkpoints/dqn/{experiment_name}").resolve()
+        plots_path = Path(f"./checkpoints/dqn/{experiment_name}/plots").resolve()
+        os.makedirs(algo_path, exist_ok=True)
+        os.makedirs(plots_path, exist_ok=True)
+        algo.save(algo_path)
+
+    finally:
+        length = min(len(mean_return), len(epsilons))
+        xs = np.array([i for i in length])
+        ys = np.array(mean_return[:length])
+        es = np.array(epsilons[:length])
+
+        plt.plot(xs, ys, label="mean reward")
+        plt.plot(xs, es, "-", label="epsilon")
+        plt.savefig(f"{plots_path}/mean_reward.svg")
+
+
+def validate():
+    dqn = DQNAgent.load("checkpoints/dqn/test")
+    rand = RandomAgent(36)
+
+    results = validate(
+        env_factory=raw_env_creator, agents=(dqn, rand), n_episodes=10000
+    )
+    wins = results[0]
+    losses = results[2]
+    print(f"{wins:.2f}% | {losses:.2f}%")
+
+
+def set_epsilon(epsilon: float, algo) -> None:
+    algo.env_runner_group.foreach_env_runner(
+        lambda w: w.module["p0"].model_config.update({"epsilon": epsilon})
+    )
+    if algo.eval_env_runner_group is not None:
+        algo.eval_env_runner_group.foreach_env_runner(
+            lambda w: w.module["p0"].model_config.update({"epsilon": 0.0})
         )
-        results = algo.train()
 
-        eval_runners = results.get(EVALUATION_RESULTS, {}).get(ENV_RUNNER_RESULTS, {})
-        agent_returns = eval_runners.get("agent_episode_returns_mean", {})
-        mean = agent_returns.get("Player 1", 0.0)
-        mean_return[i] = mean
-        epsilons[i] = epsilon
-        pbar.set_description(f"Avg vs rand: eps: {epsilon:.3f} wins: {mean:.3f}")
 
-    timestamp = datetime.datetime.now()
-    algo_path = Path(f"./checkpoints/dqn/{timestamp}").resolve()
-    plots_path = Path(f"./checkpoints/dqn/{timestamp}/plots").resolve()
-    os.makedirs(algo_path, exist_ok=True)
-    os.makedirs(plots_path, exist_ok=True)
+def raw_env_creator(cfg=None):
+    return DurakEnv()
 
-    xs = np.array([i for i in range(iterations)])
-    ys = np.array(mean_return)
-    es = np.array(epsilons)
 
-    plt.plot(xs, ys, label="mean reward")
-    plt.plot(xs, es, "-", label="epsilon")
+def env_creator(cfg=None):
+    return ParallelPettingZooEnv(DurakEnv())
 
-    plt.savefig(f"{plots_path}/mean_reward.svg")
 
-    algo.save(algo_path)
-
+register_env(
+    "custom-cardgame-v1",
+    env_creator,
+)
 
 if __name__ == "__main__":
     main()
