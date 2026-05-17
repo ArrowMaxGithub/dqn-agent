@@ -62,15 +62,20 @@ def main():
         print("NO GPU SUPPORT")
 
     learning_rate = 1e-4
-    iterations = 64
+    iterations = 1024
     num_env_runners = 16
     num_envs_per_env_runner = 8
     replay_buffer_capacity = 65536 * 16
     dueling = True
     double_q = True
     train_batch_size = 4096
-    num_steps_sampled_before_learning_starts = 65536
-    target_network_update_freq = 1
+    num_steps_sampled_before_learning_starts = 65536 * 4
+    target_network_update_freq = train_batch_size * 4
+    td_error_loss_fn = "huber"
+    n_step = 10
+    adam_epsilon = 1e-3
+    grad_clip = 10.0
+    tau = 1.0
 
     config = (
         DQNConfig()
@@ -121,13 +126,13 @@ def main():
             double_q=double_q,
             train_batch_size_per_learner=train_batch_size,
             num_steps_sampled_before_learning_starts=num_steps_sampled_before_learning_starts,
-            epsilon=1.0,  # Set in training iteration
+            epsilon=1.0,  # Set during training iteration
             target_network_update_freq=target_network_update_freq,
-            td_error_loss_fn="huber",
-            n_step=10,
-            adam_epsilon=1e-3,
-            grad_clip=10.0,
-            tau=0.005,
+            td_error_loss_fn=td_error_loss_fn,
+            n_step=n_step,
+            adam_epsilon=adam_epsilon,
+            grad_clip=grad_clip,
+            tau=tau,
         )
         .evaluation(
             evaluation_interval=1,
@@ -144,8 +149,17 @@ def main():
     )
 
     algo = config.build_algo()
+    algo.env_runner_group.foreach_env_runner(
+        lambda w: w.module["p0"].model_config.update({"epsilon": 1.0})
+    )
 
-    warmup_iterations = num_steps_sampled_before_learning_starts // train_batch_size
+    steps_per_iteration = (
+        num_env_runners
+        * num_envs_per_env_runner
+        * (train_batch_size // (num_env_runners * num_envs_per_env_runner))
+    )
+    warmup_iterations = num_steps_sampled_before_learning_starts // steps_per_iteration
+
     pbar = tqdm(range(warmup_iterations))
     for i in pbar:
         results = algo.train()
@@ -176,7 +190,6 @@ def main():
     plots_path = Path(f"./checkpoints/dqn/{timestamp}/plots").resolve()
     os.makedirs(algo_path, exist_ok=True)
     os.makedirs(plots_path, exist_ok=True)
-    algo.save(algo_path)
 
     xs = np.array([i for i in range(iterations)])
     ys = np.array(mean_return)
@@ -186,6 +199,8 @@ def main():
     plt.plot(xs, es, "-", label="epsilon")
 
     plt.savefig(f"{plots_path}/mean_reward.svg")
+
+    algo.save(algo_path)
 
 
 if __name__ == "__main__":
