@@ -1,4 +1,4 @@
-# Q-learning and Deep-Q-Networks for 2-Player-Durak
+# Q-learning and Double-Deep-Q-Networks for 2-Player-Durak
 
 Training and testing parameters are set in main.py
 
@@ -14,27 +14,66 @@ Docker image is based on [rocm/pytorch](https://hub.docker.com/r/rocm/pytorch) a
 
 Manual CPU implementation based on dynamically growing Q-Value-Tables
 
-## Deep-Q-Networks:
+## Double-Deep-Q-Networks:
 
-Implementation by [Ray RLLib](https://docs.ray.io/en/latest/rllib/rllib-algorithms.html#dqn)
+Implementation basen on the reference implementation by [Ray](https://github.com/ray-project/ray/tree/master/rllib/algorithms/dqn)
 
-Action masking implemented as TorchRLModule
+Action masking implemented as custom TorchRLModule
 
-GPU-supported learning via PyTorch - fallback CPU training
-
-Optional Dueling- and Double-DQN modes
+GPU-accelerated via PyTorch
 
 ## Environment:
 
-Parallel PettingZoo environment with active player masking
+Parallel PettingZoo environment
 
 Perfect public knowledge tracking for played cards:
 
-Status(IntEnum):
+```python
+class Status(IntEnum):
     Unknown = 0
     MyCard = 1
     OpponentCard = 2
-    Attack = 3
-    Defense = 4
-    InDeck = 5
-    Discarded = 6
+    OpenAttack = 3
+    DefendedAttack = 4
+    Defense = 5
+    InDeck = 6
+    Discarded = 7
+```
+
+Observation space:
+
+```python
+{
+    agent: gym.spaces.Dict(
+        {
+            "observations": gym.spaces.MultiDiscrete(
+                [len(Status)] * self.num_cards  # All cards
+                + [len(CardColor)]  # Trump color
+                + [len(Phase)]  # Current phase
+                + [2]  # Is attacker (0 or 1)
+                + [2]  # Is active player (0 or 1)
+                + [self.num_cards + 1]  # Own hand size (0..36)
+                + [self.num_cards + 1]  # Opponent hand size (0..36)
+                + [self.num_cards + 1]  # Draw pile size (0..36)
+            ),
+            "action_mask": gym.spaces.MultiBinary(self.num_cards + 1),
+        }
+    )
+    for agent in self.possible_agents
+}
+```
+
+Action space:
+
+```python
+self.action_spaces = {
+    agent: gym.spaces.Discrete(self.num_cards + 1)
+    for agent in self.possible_agents
+}
+```
+
+## Results (WIP):
+
+DDQN vs. uniformly random opponent:
+
+<img src="./mean_reward.svg">
