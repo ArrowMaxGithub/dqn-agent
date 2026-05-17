@@ -15,7 +15,6 @@
 #   2: In Play - This card has been played as attack or defense card
 #   3: Discarded
 
-from copy import deepcopy
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -40,7 +39,7 @@ class Cardgame(ParallelEnv):
         assert num_hand_cards * 2 <= num_cards
         self.num_cards = num_cards
         self.num_hand_cards = num_hand_cards
-        self.possible_agents = [f"agent_{i}" for i in range(2)]
+        self.possible_agents = [f"Player {i + 1}" for i in range(2)]
         self.n_action_space = self.num_cards + 1
         self.passing_action = self.num_cards
         self.full_deck = [i for i in range(self.num_cards)]
@@ -86,8 +85,10 @@ class Cardgame(ParallelEnv):
         self.truncateds = {agent: False for agent in self.agents}
         self.observations = {
             agent: {
-                "observations": None,
-                "action_mask": None,
+                "observations": np.array(
+                    [Status.Unknown] * self.num_cards, dtype=np.int8
+                ),
+                "action_mask": np.zeros(self.num_cards + 1, dtype=np.int8),
             }
             for agent in self.agents
         }
@@ -103,6 +104,16 @@ class Cardgame(ParallelEnv):
         return self.action_spaces[agent]
 
     def step(self, actions):
+        # ParallelEnvWrapper calls step once more after all agents are already dead
+        if len(self.agents) == 0:
+            return (
+                self.observations,
+                self.rewards,
+                self.terminateds,
+                self.truncateds,
+                self.infos,
+            )
+
         self._clear_rewards()
 
         for agent, action in actions.items():
@@ -118,9 +129,7 @@ class Cardgame(ParallelEnv):
                 self._end_turn()
                 next_active_player = self.attacking_agent
 
-        state = self._end_of_cycle(next_active_player)
-
-        return state
+        return self._end_of_cycle(next_active_player)
 
     def render(self):
         pass
@@ -135,6 +144,22 @@ class Cardgame(ParallelEnv):
         return self.winner
 
     def _end_of_cycle(self, next_active_player):
+        winner = self._get_winner()
+
+        if winner is not None:
+            winning_agent = winner
+            losing_agent = (
+                self.possible_agents[1]
+                if winner == self.possible_agents[0]
+                else self.possible_agents[0]
+            )
+
+            self.rewards[winning_agent] = 1
+            self.terminateds[winning_agent] = True
+
+            self.rewards[losing_agent] = -1
+            self.terminateds[losing_agent] = True
+
         self._accumulate_rewards()
         state = self._update_agents_data()
 
@@ -185,11 +210,11 @@ class Cardgame(ParallelEnv):
             self.observations[agent]["action_mask"] = mask
 
         return (
-            deepcopy(self.observations),
-            deepcopy(self.rewards),
-            deepcopy(self.terminateds),
-            deepcopy(self.truncateds),
-            deepcopy(self.infos),
+            self.observations,
+            self._cumulative_rewards,
+            self.terminateds,
+            self.truncateds,
+            self.infos,
         )
 
     def _handle_attack(self, agent, action):
@@ -237,7 +262,7 @@ class Cardgame(ParallelEnv):
         atk_reward, atk_terminated, atk_truncated = 0, False, False
         def_reward, def_terminated, def_truncated = 0, False, False
 
-        # Neither player has any cards left => Draw, small reward for both
+        # Neither player has any cards left => Draw
         if all(len(cards) == 0 for cards in self.agents_cards.values()):
             atk_reward = 0.0
             atk_terminated = True
@@ -270,12 +295,6 @@ class Cardgame(ParallelEnv):
 
     def _remove_agent(self, agent):
         self.agents.remove(agent)
-        self.rewards.pop(agent)
-        self._cumulative_rewards.pop(agent)
-        self.terminateds.pop(agent)
-        self.truncateds.pop(agent)
-        self.observations.pop(agent)
-        self.infos.pop(agent)
 
     def _clear_rewards(self):
         for agent in self.agents:

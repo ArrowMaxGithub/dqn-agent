@@ -31,6 +31,16 @@ logging.getLogger("ray").setLevel(logging.ERROR)
 ray.init(logging_level=logging.ERROR, configure_logging=True, ignore_reinit_error=True)
 
 
+def test():
+    dqn = DQNAgent.load("checkpoints/dqn/test")
+    rand = RandomAgent(36)
+
+    results = test(env_factory=raw_env_creator, agents=(dqn, rand), n_episodes=10000)
+    wins = results[0]
+    losses = results[2]
+    print(f"{wins:.2f}% | {losses:.2f}%")
+
+
 def raw_env_creator(cfg=None):
     return DurakEnv()
 
@@ -51,26 +61,16 @@ def main():
     else:
         print("NO GPU SUPPORT")
 
-    # dqn = DQNAgent.load("checkpoints/dqn/test")
-    # rand = RandomAgent(36)
-
-    # results = test(env_factory=raw_env_creator, agents=(dqn, rand), n_episodes=10000)
-    # wins = results[0]
-    # losses = results[2]
-    # print(f"{wins:.2f}% | {losses:.2f}%")
-
-    # return
-
-    learning_rate = 1e-5
-    iterations = 1024
+    learning_rate = 1e-4
+    iterations = 64
     num_env_runners = 16
     num_envs_per_env_runner = 8
     replay_buffer_capacity = 65536 * 16
     dueling = True
     double_q = True
-    train_batch_size = 1024
-    num_steps_sampled_before_learning_starts = train_batch_size * 4
-    target_network_update_freq = train_batch_size
+    train_batch_size = 4096
+    num_steps_sampled_before_learning_starts = 65536
+    target_network_update_freq = 1
 
     config = (
         DQNConfig()
@@ -84,9 +84,9 @@ def main():
             disable_env_checking=True,
         )
         .multi_agent(
-            policies={"p0", "random"},
+            policies={"p0", "opponent"},
             policy_mapping_fn=lambda aid, *args, **kwargs: (
-                "p0" if aid == "Player 1" else "random"
+                "p0" if aid == "Player 1" else "opponent"
             ),
             policies_to_train=["p0"],
         )
@@ -96,7 +96,7 @@ def main():
                     "p0": RLModuleSpec(
                         module_class=DQNMaskedRLModule,
                     ),
-                    "random": RLModuleSpec(
+                    "opponent": RLModuleSpec(
                         module_class=RandomMaskedRLModule,
                         inference_only=True,
                     ),
@@ -123,6 +123,11 @@ def main():
             num_steps_sampled_before_learning_starts=num_steps_sampled_before_learning_starts,
             epsilon=1.0,  # Set in training iteration
             target_network_update_freq=target_network_update_freq,
+            td_error_loss_fn="huber",
+            n_step=10,
+            adam_epsilon=1e-3,
+            grad_clip=10.0,
+            tau=0.005,
         )
         .evaluation(
             evaluation_interval=1,
@@ -131,31 +136,33 @@ def main():
             evaluation_duration=1000,
             evaluation_config=DQNConfig.overrides(
                 policy_mapping_fn=lambda aid, *args, **kwargs: (
-                    "p0" if aid == "Player 1" else "random"
-                )
+                    "p0" if aid == "Player 1" else "opponent"
+                ),
+                epsilon=0.0,
             ),
         )
     )
 
     algo = config.build_algo()
 
-    mean_return = [0.0] * iterations
-    epsilons = [1.0] * iterations
-
-    # For each iteration => train_batch_size environment steps are generated
-    # These are distributed across all env_runners
-    # Each env_runner distributes its allocated steps to their environments
-    #
-    # For batch_size = 1024, env_runner = 16, envs_per_runner = 32:
-    # Each runner gets: 1024 / 16 = 64 steps
-    # Each env advances by: 64 / 8 = 8 steps
-    pbar = tqdm(range(iterations))
+    warmup_iterations = num_steps_sampled_before_learning_starts // train_batch_size
+    pbar = tqdm(range(warmup_iterations))
     for i in pbar:
         results = algo.train()
+        eval_runners = results.get(EVALUATION_RESULTS, {}).get(ENV_RUNNER_RESULTS, {})
+        agent_returns = eval_runners.get("agent_episode_returns_mean", {})
+        mean = agent_returns.get("Player 1", 0.0)
+        pbar.set_description(f"Warmup vs rand: eps: {1.0} wins: {mean:.3f}")
+
+    mean_return = [0.0] * iterations
+    epsilons = [1.0] * iterations
+    pbar = tqdm(range(iterations))
+    for i in pbar:
         epsilon = max(0.05, 1.0 - (1.0 - 0.05) * (i / iterations / 0.67))
         algo.env_runner_group.foreach_env_runner(
             lambda w: w.module["p0"].model_config.update({"epsilon": epsilon})
         )
+        results = algo.train()
 
         eval_runners = results.get(EVALUATION_RESULTS, {}).get(ENV_RUNNER_RESULTS, {})
         agent_returns = eval_runners.get("agent_episode_returns_mean", {})

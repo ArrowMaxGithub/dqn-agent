@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dqn.dqn_learner import (
     QF_NEXT_PREDS,
@@ -66,41 +67,33 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
         obs_shape = self.config.observation_space["observations"].shape
         num_states = self.config.observation_space["observations"].nvec.max()
         num_outputs = self.config.action_space.n
-
         input_dim = obs_shape[0] * num_states
 
-        self.embedding = nn.Embedding(num_states, num_states)
         self.net = nn.Sequential(
-            nn.Linear(input_dim, 256),
+            nn.Linear(input_dim, 512),
             nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Linear(512, 256),
             nn.ReLU(),
-            nn.Linear(128, num_outputs),
+            nn.Linear(256, num_outputs),
         )
 
         self.make_target_networks()
 
     def make_target_networks(self) -> None:
-        self.target_embedding = make_target_network(self.embedding)
         self.target_net = make_target_network(self.net)
 
     def get_target_network_pairs(self):
         return [
-            (self.embedding, self.target_embedding),
             (self.net, self.target_net),
         ]
 
     def forward_target(self, batch):
         with torch.no_grad():
             obs = batch[Columns.OBS]["observations"].long()
-            mask = batch[Columns.OBS]["action_mask"]
-
-            embedded = self.target_embedding(obs)
-            flat_obs = embedded.view(obs.shape[0], -1)
+            flat_obs = self._get_flat_obs(obs)
             q_values = self.target_net(flat_obs)
 
-            inf_mask = (1 - mask) * -1e8
-            return {QF_PREDS: q_values + inf_mask}
+            return {QF_PREDS: q_values}
 
     def _forward_inference(self, batch, **kwargs):
         return self._common_forward(batch)
@@ -115,31 +108,37 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
             inf_mask = (1 - mask) * -1e8
             return {
                 Columns.ACTION_DIST_INPUTS: random + inf_mask,
+                QF_PREDS: outputs[QF_PREDS],
             }
 
         return outputs
 
+    def compute_q_values(self, batch):
+        obs = batch[Columns.OBS]["observations"].long()
+        flat_obs = self._get_flat_obs(obs)
+        return {QF_PREDS: self.net(flat_obs)}
+
+    def compute_advantage_distribution(self, batch):
+        return self.compute_q_values(batch)
+
     def _forward_train(self, batch, **kwargs):
         outputs = self._common_forward(batch)
-        outputs[QF_PREDS] = outputs[Columns.ACTION_DIST_INPUTS]
 
         if Columns.NEXT_OBS in batch:
             next_batch = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
-            online_output = self._common_forward(next_batch)
-            target_output = self.forward_target(next_batch)
+            online_next = self.compute_q_values(next_batch)
+            target_next = self.forward_target(next_batch)
 
-            outputs[QF_TARGET_NEXT_PREDS] = target_output[QF_PREDS]
-            outputs[QF_NEXT_PREDS] = online_output[Columns.ACTION_DIST_INPUTS]
+            outputs[QF_NEXT_PREDS] = online_next[QF_PREDS]
+            outputs[QF_TARGET_NEXT_PREDS] = target_next[QF_PREDS]
 
         return outputs
 
     def _common_forward(self, batch):
         obs = batch[Columns.OBS]["observations"].long()
         mask = batch[Columns.OBS]["action_mask"]
-
-        embedded = self.embedding(obs)
-        flat_obs = embedded.view(obs.shape[0], -1)
+        flat_obs = self._get_flat_obs(obs)
         q_values = self.net(flat_obs)
 
         inf_mask = (1 - mask) * -1e8
@@ -147,4 +146,13 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
 
         return {
             Columns.ACTION_DIST_INPUTS: masked_q_values,
+            QF_PREDS: q_values,
         }
+
+    def _get_flat_obs(self, obs):
+        nvec = torch.tensor(
+            self.config.observation_space["observations"].nvec, device=obs.device
+        )
+        num_classes = int(nvec.max())
+        one_hot = F.one_hot(obs, num_classes=num_classes).float()
+        return one_hot.view(obs.shape[0], -1)

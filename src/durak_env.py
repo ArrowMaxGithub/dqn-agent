@@ -41,8 +41,12 @@ class DurakEnv(ParallelEnv):
             agent: gym.spaces.Dict(
                 {
                     "observations": gym.spaces.MultiDiscrete(
-                        [len(Status)]
-                        * (self.num_cards + 1)  # All cards plus trump color
+                        [len(Status)] * self.num_cards  # All cards
+                        + [len(CardColor)]  # Trump color
+                        + [len(Phase)]  # Current phase
+                        + [2]  # Is attacker (0 or 1)
+                        + [self.num_cards + 1]  # Opponent hand size (0..36)
+                        + [self.num_cards + 1]  # Draw pile size (0..36)
                     ),
                     "action_mask": gym.spaces.MultiBinary(self.num_cards + 1),
                 }
@@ -69,10 +73,13 @@ class DurakEnv(ParallelEnv):
         self.truncateds = {agent: False for agent in self.agents}
         self.observations = {
             agent: {
-                "observations": np.array(
-                    [Status.Unknown] * (self.num_cards + 1), dtype=np.int8
+                "observations": np.zeros(
+                    self.observation_spaces[agent]["observations"].shape[0],
+                    dtype=np.int8,
                 ),
-                "action_mask": np.zeros(self.num_cards + 1, dtype=np.int8),
+                "action_mask": np.zeros(
+                    self.observation_spaces[agent]["action_mask"].n, dtype=np.int8
+                ),
             }
             for agent in self.agents
         }
@@ -247,7 +254,7 @@ class DurakEnv(ParallelEnv):
 
         return (
             self.observations,
-            self.rewards,
+            self._cumulative_rewards,
             self.terminateds,
             self.truncateds,
             self.infos,
@@ -256,10 +263,13 @@ class DurakEnv(ParallelEnv):
     def _update_agent_data(self, i, agent, attacks, defenses):
         cards = set(self.gamestate.players[i].hand.cards)
         opponent_cards = set(self.gamestate.players[(i + 1) % 2].hand.cards)
-        obs = self.observations[agent]["observations"]
+        obs = self.observations[agent]["observations"].copy()
 
-        # Set trump color
-        obs[-1] = np.int8(self.trump_card.color.value)
+        obs[self.num_cards + 0] = int(self.trump_card.color.value)
+        obs[self.num_cards + 1] = int(self.phase.value)
+        obs[self.num_cards + 2] = int(i == self.gamestate.attacker)
+        obs[self.num_cards + 3] = len(self.gamestate.players[(i + 1) % 2].hand.cards)
+        obs[self.num_cards + 4] = len(self.gamestate.draw_pile)
 
         # Set player hand cards - may yet contain untracked cards
         indices = [self._get_index_from_card(card) for card in cards]
