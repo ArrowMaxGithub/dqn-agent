@@ -8,7 +8,7 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.tune.registry import register_env
 
-from dqn_agent import DQNMaskedRLModule
+from dqn_agent import DQNMaskedRLModule, DQNTorchLearner
 from durak_env import DurakEnv
 from random_agent import RandomMaskedRLModule
 
@@ -95,6 +95,7 @@ def dqn_config(params) -> DQNConfig:
             num_envs_per_env_runner=params["num_envs_per_env_runner"],
         )
         .training(
+            learner_class=DQNTorchLearner,
             replay_buffer_config={
                 "type": "MultiAgentEpisodeReplayBuffer",
                 "capacity": params["replay_buffer_capacity"],

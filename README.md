@@ -5,7 +5,8 @@ Training and testing parameters are set in main.py
 To start the container:
 
 1. sudo docker compose build
-2. sudo docker compose run --rm dqn-agent
+2. sudo docker compose up -d tensorboard 
+3. sudo docker compose run --rm trainer
 
 Docker image is based on [rocm/pytorch](https://hub.docker.com/r/rocm/pytorch) and tested with an AMD RX 6800 XT (gfx1030)
 

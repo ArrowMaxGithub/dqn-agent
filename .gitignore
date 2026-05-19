@@ -3,3 +3,4 @@
 **/.vscode
 /checkpoints
 /.tmp
+/ray_results

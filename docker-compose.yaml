@@ -1,13 +1,12 @@
 services:
-  dqn-agent:
-    image: dqn-agent:latest
+  trainer:
+    container_name: trainer
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "5678:5678"
     volumes:
       - .:/app
+      - ./ray_results:/root/ray_results
     devices:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
@@ -19,3 +18,14 @@ services:
       - HIP_VISIBLE_DEVICES=0
       - ROCR_VISIBLE_DEVICES=0
     shm_size: '16gb'
+
+  tensorboard:
+    container_name: tensorboard
+    build:
+      context: .
+      dockerfile: Dockerfile.tensorboard
+    ports:
+      - "6006:6006"
+    volumes:
+      - ./ray_results:/logs:ro
+    restart: unless-stopped
