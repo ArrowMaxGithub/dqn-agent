@@ -1,8 +1,9 @@
-import numpy as np
+import json
 import os
 from pathlib import Path
-import json
+
 import msgpack
+import numpy as np
 from tqdm import tqdm
 
 

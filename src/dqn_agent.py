@@ -16,6 +16,8 @@ from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
 
+INVALID_MASK = -1e8
+
 
 class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
     def setup(self):
@@ -43,6 +45,14 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
             (self.net, self.target_net),
         ]
 
+    def compute_q_values(self, batch):
+        obs = batch[Columns.OBS]["observations"].long()
+        flat_obs = self._encode_obs(obs)
+        return {QF_PREDS: self.net(flat_obs)}
+
+    def compute_advantage_distribution(self, batch):
+        return self.compute_q_values(batch)
+
     def forward_target(self, batch):
         with torch.no_grad():
             obs = batch[Columns.OBS]["observations"].long()
@@ -67,7 +77,7 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
             exploit_actions = torch.argmax(outputs[Columns.ACTION_DIST_INPUTS], dim=-1)
 
             uniform = torch.rand_like(mask, dtype=torch.float32)
-            inf_mask = (1.0 - mask.float()) * -1e8
+            inf_mask = (1.0 - mask.float()) * INVALID_MASK
             random_actions = torch.argmax(uniform + inf_mask, dim=-1)
 
             explore = torch.rand((B,), device=mask.device) < epsilon
@@ -75,21 +85,13 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
 
             return {Columns.ACTIONS: actions, QF_PREDS: outputs[QF_PREDS]}
 
-    def compute_q_values(self, batch):
-        obs = batch[Columns.OBS]["observations"].long()
-        flat_obs = self._encode_obs(obs)
-        return {QF_PREDS: self.net(flat_obs)}
-
-    def compute_advantage_distribution(self, batch):
-        return self.compute_q_values(batch)
-
     def _forward_train(self, batch, **kwargs):
         outputs = self.compute_q_values(batch)
 
         if Columns.NEXT_OBS in batch:
             next_batch = {Columns.OBS: batch[Columns.NEXT_OBS]}
             next_mask = batch[Columns.NEXT_OBS]["action_mask"]
-            inf_mask = (1 - next_mask.float()) * -1e8
+            inf_mask = (1 - next_mask.float()) * INVALID_MASK
 
             online_next = self.compute_q_values(next_batch)
             target_next = self.forward_target(next_batch)
@@ -103,7 +105,7 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
         q_out = self.compute_q_values(batch)
         q_values = q_out[QF_PREDS]
 
-        inf_mask = (1 - mask.float()) * -1e8
+        inf_mask = (1 - mask.float()) * INVALID_MASK
         masked_q_values = q_values + inf_mask
 
         return {
@@ -120,16 +122,14 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
 
 
 class DQNAgent:
+    def __init__(self, path):
+        algo_path = Path(path).resolve().as_uri()
+        self.algo = Algorithm.from_checkpoint(algo_path)
+
     def save(self, path):
         algo_path = Path(path).resolve()
         os.makedirs(os.path.dirname(algo_path), exist_ok=True)
         self.algo.save_to_path(algo_path.as_uri())
-
-    def load(path):
-        algo_path = Path(path).resolve().as_uri()
-        agent = DQNAgent()
-        agent.algo = Algorithm.from_checkpoint(algo_path)
-        return agent
 
     def get_label(self):
         return "DQNAgent"

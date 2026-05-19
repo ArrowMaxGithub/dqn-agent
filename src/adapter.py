@@ -1,7 +1,7 @@
-from durak import Card, CardColor, CardValue, Action
-from durak_env import Status
-
 import numpy as np
+
+from durak import Action, Card, CardColor, CardValue
+from durak_env import Status
 
 
 class PlayerInterface:
@@ -16,9 +16,9 @@ class PlayerInterface:
 
 
 class AgentInterface:
-    def GetAction(self, obs_dict: dict, force_exploitation=False): ...
+    def GetAction(self, obs_dict: dict, force_exploitation=False) -> int: ...
 
-    def GetName(self): ...
+    def GetName(self) -> str: ...
 
 
 # Adapter for agents to be used in a standard Durak game

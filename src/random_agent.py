@@ -4,6 +4,8 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.inference_only_api import InferenceOnlyAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
 
+INVALID_MASK = -1e8
+
 
 class RandomAgent:
     def __init__(
@@ -37,6 +39,6 @@ class RandomMaskedRLModule(InferenceOnlyAPI, TorchRLModule):
     def _common_forward(self, batch):
         mask = batch[Columns.OBS]["action_mask"]
         noise = torch.rand_like(mask, dtype=torch.float32)
-        inf_mask = (1 - mask) * -1e8
+        inf_mask = (1 - mask) * INVALID_MASK
         actions = torch.argmax(noise + inf_mask, dim=-1)
         return {Columns.ACTIONS: actions}

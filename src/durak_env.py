@@ -1,5 +1,4 @@
-from dataclasses import dataclass
-from enum import IntEnum, Enum
+from enum import IntEnum
 
 import gymnasium as gym
 import numpy as np
@@ -8,7 +7,6 @@ from pettingzoo import ParallelEnv
 from durak import Card, CardColor, CardValue, GameState
 
 
-@dataclass()
 class Status(IntEnum):
     Unknown = 0
     MyCard = 1
@@ -20,7 +18,7 @@ class Status(IntEnum):
     Discarded = 7
 
 
-class Phase(Enum):
+class Phase(IntEnum):
     Attack = 0
     Defense = 1
     ThrowIn = 2

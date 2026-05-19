@@ -1,6 +1,6 @@
+import random
 from dataclasses import dataclass, field
 from enum import Enum
-import random
 
 
 # Farben (Suits)
