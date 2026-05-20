@@ -7,16 +7,16 @@ services:
     volumes:
       - .:/app
       - ./ray_results:/root/ray_results
-    devices:
-      - /dev/kfd:/dev/kfd
-      - /dev/dri:/dev/dri
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
     environment:
-      - PATH="/opt/venv/bin:$PATH"
       - PYTHONPATH=/app/src
-      - HSA_OVERRIDE_GFX_VERSION=10.3.0
       - CUDA_VISIBLE_DEVICES=0
-      - HIP_VISIBLE_DEVICES=0
-      - ROCR_VISIBLE_DEVICES=0
     shm_size: '16gb'
 
   tensorboard:

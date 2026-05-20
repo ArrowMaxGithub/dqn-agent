@@ -16,8 +16,8 @@ def main():
 
     experiment_name = "2026_05_19_tensorboard"
     params = {
-        "learning_rate": 2e-4,
-        "iterations": 128,
+        "learning_rate": 1e-4,
+        "iterations": 512,
         "epsilon_schedule": "linear",
         "epsilon_decay": 0.67,
         "initial_epsilon": 1.0,

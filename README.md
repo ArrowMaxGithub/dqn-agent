@@ -8,8 +8,6 @@ To start the container:
 2. sudo docker compose up -d tensorboard 
 3. sudo docker compose run --rm trainer
 
-Docker image is based on [rocm/pytorch](https://hub.docker.com/r/rocm/pytorch) and tested with an AMD RX 6800 XT (gfx1030)
-
 
 ## Q-Learning:
 

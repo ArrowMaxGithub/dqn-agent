@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm7.2.3_ubuntu22.04_py3.10_pytorch_release_2.9.1
+FROM pytorch/pytorch:2.12.0-cuda13.2-cudnn9-runtime
 
 WORKDIR /app
 
@@ -9,4 +9,4 @@ RUN pip install -r docker_requirements.txt
 
 COPY /src /src
 
-CMD ["/opt/venv/bin/python","src/main.py"] 
+CMD ["python", "src/main.py"]
