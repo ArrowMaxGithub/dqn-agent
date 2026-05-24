@@ -3,21 +3,22 @@ import torch
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.inference_only_api import InferenceOnlyAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
+from interfaces import AgentInterface
 
 INVALID_MASK = -1e8
 
 
-class RandomAgent:
+class RandomAgent(AgentInterface):
     def __init__(
         self,
         passing_action,
     ):
         self.passing_action = passing_action
 
-    def get_label(self):
+    def GetName(self) -> str:
         return "RandomAgent"
 
-    def get_action(self, obs_dict):
+    def GetAction(self, obs_dict: dict) -> int:
         mask = obs_dict["action_mask"]
         legal_actions = np.where(mask == 1)[0]
         return np.random.choice(legal_actions)
