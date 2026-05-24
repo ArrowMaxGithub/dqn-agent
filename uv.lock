@@ -459,21 +459,21 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "debugpy", specifier = ">=1.8.20" },
-    { name = "dm-tree", specifier = ">=0.1.10" },
-    { name = "gputil", specifier = ">=1.4.0" },
-    { name = "gymnasium", specifier = ">=1.2.2" },
-    { name = "lz4", specifier = ">=4.4.5" },
-    { name = "matplotlib", specifier = ">=3.10.9" },
-    { name = "msgpack", specifier = ">=1.1.2" },
-    { name = "numpy", specifier = ">=2.2.6" },
-    { name = "opencv-python", specifier = ">=4.13.0.92" },
-    { name = "pettingzoo", specifier = ">=1.26.1" },
-    { name = "prettytable", specifier = ">=3.17.0" },
-    { name = "ray", extras = ["rllib", "tune"], specifier = ">=2.55.1" },
-    { name = "scipy", specifier = ">=1.15.3" },
-    { name = "tensorboard", specifier = ">=2.20.0" },
-    { name = "tqdm", specifier = ">=4.67.3" },
+    { name = "debugpy" },
+    { name = "dm-tree" },
+    { name = "gputil" },
+    { name = "gymnasium" },
+    { name = "lz4" },
+    { name = "matplotlib" },
+    { name = "msgpack" },
+    { name = "numpy" },
+    { name = "opencv-python" },
+    { name = "pettingzoo" },
+    { name = "prettytable" },
+    { name = "ray", extras = ["rllib", "tune"] },
+    { name = "scipy" },
+    { name = "tensorboard" },
+    { name = "tqdm" },
 ]
 
 [[package]]
