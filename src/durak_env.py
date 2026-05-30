@@ -76,7 +76,7 @@ class DurakEnv(ParallelEnv):
                     dtype=np.int8,
                 ),
                 "action_mask": np.zeros(
-                    self.observation_spaces[agent]["action_mask"].n, dtype=np.int8
+                    self.observation_spaces[agent]["action_mask"].n, dtype=np.bool
                 ),
             }
             for agent in self.agents
@@ -138,7 +138,7 @@ class DurakEnv(ParallelEnv):
             self.gamestate.swap_roles()
             return
 
-        card = self._get_card_from_index(action)
+        card = get_card_from_index(action)
 
         assert card in attacker.hand.cards
         assert card in self.gamestate.LegalAttackCards(attacker.hand.cards)
@@ -157,7 +157,7 @@ class DurakEnv(ParallelEnv):
             self.phase = Phase.Take
             return
 
-        card = self._get_card_from_index(action)
+        card = get_card_from_index(action)
 
         assert card in attacker.hand.cards
         assert card in self.gamestate.LegalAttackCards(attacker.hand.cards)
@@ -176,7 +176,7 @@ class DurakEnv(ParallelEnv):
             self.phase = Phase.ThrowIn
             return
 
-        card = self._get_card_from_index(action)
+        card = get_card_from_index(action)
 
         assert card in defender.hand.cards
         assert card in self.gamestate.LegalDefenseCards(defender.hand.cards)
@@ -275,12 +275,12 @@ class DurakEnv(ParallelEnv):
         obs[self.num_cards + 6] = len(self.gamestate.draw_pile)
 
         # Set player hand cards - may yet contain untracked cards
-        indices = [self._get_index_from_card(card) for card in cards]
+        indices = [get_index_from_card(card) for card in cards]
         obs[indices] = Status.MyCard
 
         # Set already shown cards
         for card in self.tracked_cards:
-            index = self._get_index_from_card(card)
+            index = get_index_from_card(card)
             if card in opponent_cards:
                 obs[index] = Status.OpponentCard
             elif card in cards:
@@ -312,8 +312,8 @@ class DurakEnv(ParallelEnv):
             legal_cards = self.gamestate.LegalDefenseCards(cards=cards)
 
         # Set action mask to legal cards
-        action_mask = np.zeros(self.num_cards + 1, dtype=np.int8)
-        indices = [self._get_index_from_card(card) for card in legal_cards]
+        action_mask = np.zeros(self.num_cards + 1, dtype=np.bool)
+        indices = [get_index_from_card(card) for card in legal_cards]
         action_mask[indices] = 1
         action_mask[self.passing_action] = 1
 
@@ -323,7 +323,7 @@ class DurakEnv(ParallelEnv):
 
         # If agent is not active: can only pass
         if agent != self.next_player:
-            action_mask = np.zeros(self.num_cards + 1, dtype=np.int8)
+            action_mask = np.zeros(self.num_cards + 1, dtype=np.bool)
             action_mask[self.passing_action] = 1
 
         self.observations[agent]["observations"] = obs
@@ -336,14 +336,41 @@ class DurakEnv(ParallelEnv):
         for agent in self.agents:
             self.rewards[agent] = 0
 
-    def _get_index_from_card(self, card: Card) -> int:
-        # [Spades[6..Ace], Clubs[6..Ace], Hearts[6..Ace], Diamonds[6..Ace]]
-        return (card.color.value) * len(CardValue) + (card.value.value - 6)
 
-    def _get_card_from_index(self, index: int) -> Card | None:
-        if index == self.passing_action:
-            return None
+def get_index_from_card(card: Card) -> int:
+    # [Spades[6..Ace], Clubs[6..Ace], Hearts[6..Ace], Diamonds[6..Ace]]
+    return (card.color.value) * len(CardValue) + (card.value.value - 6)
 
-        color = CardColor(index // len(CardValue))
-        value = CardValue(index % len(CardValue) + 6)
-        return Card(value=value, color=color)
+
+def get_card_from_index(index: int) -> Card | None:
+    if index == 36:
+        return None
+
+    color = CardColor(index // len(CardValue))
+    value = CardValue(index % len(CardValue) + 6)
+    return Card(value=value, color=color)
+
+
+def get_legal_cards_from_obs_dict(obs_dict: dict) -> list[Card]:
+    obs = obs_dict["observations"]
+    mask = obs_dict["action_mask"]
+
+    cards = obs[:36]
+    my_cards = np.where(cards == Status.MyCard)
+    my_legal_cards = my_cards[mask]
+
+    return [get_card_from_index(index) for index in my_legal_cards]
+
+
+def get_game_info_from_obs_dict(obs_dict: dict) -> dict:
+    obs = obs_dict["observations"]
+
+    return {
+        "trump": CardColor(obs[36]),
+        "phase": Phase(obs[37]),
+        "is_attacker": bool(obs[38]),
+        "is_active_player": bool(obs[39]),
+        "own_hand_size": int(obs[40]),
+        "opponent_hand_size": int(obs[41]),
+        "draw_pile": int(obs[42]),
+    }
