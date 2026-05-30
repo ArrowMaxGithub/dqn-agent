@@ -10,24 +10,26 @@ from tqdm import tqdm
 from config import dqn_config, save_parameters, set_epsilon
 from epsilon_decay import EpsilonDecay
 
+from datetime import datetime
+
 
 def main():
     print(f"GPU supported: {torch.cuda.is_available()}")
 
-    experiment_name = "2026_05_19_tensorboard"
+    experiment_name = f"{datetime.now()}_trump_fish"
     params = {
-        "learning_rate": 2e-4,
-        "iterations": 128,
+        "learning_rate": 1e-4,
+        "iterations": 1024,
         "epsilon_schedule": "linear",
         "epsilon_decay": 0.67,
         "initial_epsilon": 1.0,
         "final_epsilon": 0.05,
         "num_env_runners": 16,
         "num_envs_per_env_runner": 8,
-        "replay_buffer_capacity": 65536 * 16,
+        "replay_buffer_capacity": 65536 * 64,
         "double_q": True,
         "train_batch_size": 2048,
-        "num_steps_sampled_before_learning_starts": 65536,
+        "num_steps_sampled_before_learning_starts": 65536 * 16,
         "target_network_update_freq": 4,
         "td_error_loss_fn": "huber",
         "n_step": 5,

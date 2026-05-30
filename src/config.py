@@ -10,7 +10,7 @@ from ray.tune.registry import register_env
 
 from dqn_agent import DQNMaskedRLModule, DQNTorchLearner
 from durak_env import DurakEnv
-from random_agent import RandomMaskedRLModule
+from trump_fish_agent import TrumpFishRLModule
 
 
 def env_creator(cfg=None):
@@ -80,7 +80,7 @@ def dqn_config(params) -> DQNConfig:
                         module_class=DQNMaskedRLModule,
                     ),
                     "opponent": RLModuleSpec(
-                        module_class=RandomMaskedRLModule,
+                        module_class=TrumpFishRLModule,
                         inference_only=True,
                     ),
                 }
