@@ -1,9 +1,29 @@
 services:
-  trainer:
-    container_name: trainer
+  nvidia-trainer:
+    container_name: nvidia-trainer
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.nvidia
+    volumes:
+      - .:/app
+      - ./ray_results:/root/ray_results
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    environment:
+      - PYTHONPATH=/app/src
+      - CUDA_VISIBLE_DEVICES=0
+    shm_size: '16gb'
+
+  amd-trainer:
+    container_name: amd-trainer
+    build:
+      context: .
+      dockerfile: Dockerfile.amd
     volumes:
       - .:/app
       - ./ray_results:/root/ray_results

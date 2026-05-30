@@ -4,12 +4,17 @@ Training and testing parameters are set in main.py
 
 To start the container:
 
-1. sudo docker compose build
-2. sudo docker compose up -d tensorboard 
-3. sudo docker compose run --rm trainer
+AMD:
+```
+sudo docker compose up -d tensorboard 
+sudo docker compose run --rm amd-trainer
+```
 
-Docker image is based on [rocm/pytorch](https://hub.docker.com/r/rocm/pytorch) and tested with an AMD RX 6800 XT (gfx1030)
-
+Nvidia:
+```
+sudo docker compose up -d tensorboard 
+sudo docker compose run --rm nvidia-trainer
+```
 
 ## Q-Learning:
 
@@ -44,33 +49,27 @@ class Status(IntEnum):
 Observation space:
 
 ```python
-{
-    agent: gym.spaces.Dict(
-        {
-            "observations": gym.spaces.MultiDiscrete(
-                [len(Status)] * self.num_cards  # All cards
-                + [len(CardColor)]  # Trump color
-                + [len(Phase)]  # Current phase
-                + [2]  # Is attacker (0 or 1)
-                + [2]  # Is active player (0 or 1)
-                + [self.num_cards + 1]  # Own hand size (0..36)
-                + [self.num_cards + 1]  # Opponent hand size (0..36)
-                + [self.num_cards + 1]  # Draw pile size (0..36)
-            ),
-            "action_mask": gym.spaces.MultiBinary(self.num_cards + 1),
-        }
-    )
-    for agent in self.possible_agents
-}
+gym.spaces.Dict(
+    {
+        "observations": gym.spaces.MultiDiscrete(
+            [len(Status)] * self.num_cards  # All cards
+            + [len(CardColor)]  # Trump color
+            + [len(Phase)]  # Current phase
+            + [2]  # Is attacker (0 or 1)
+            + [2]  # Is active player (0 or 1)
+            + [self.num_cards + 1]  # Own hand size (0..36)
+            + [self.num_cards + 1]  # Opponent hand size (0..36)
+            + [self.num_cards + 1]  # Draw pile size (0..36)
+        ),
+        "action_mask": gym.spaces.MultiBinary(self.num_cards + 1), # 36 cards + pass action
+    }
+)
 ```
 
 Action space:
 
 ```python
-self.action_spaces = {
-    agent: gym.spaces.Discrete(self.num_cards + 1)
-    for agent in self.possible_agents
-}
+gym.spaces.Discrete(self.num_cards + 1) # Pass == 36
 ```
 
 ## Results (WIP):
