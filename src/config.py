@@ -5,10 +5,11 @@ import torch
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.algorithms.dqn.torch.dqn_torch_learner import DQNTorchLearner
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.tune.registry import register_env
 
-from dqn_agent import DQNMaskedRLModule, DQNTorchLearner
+from dqn_agent import DQNMaskedRLModule
 from durak_env import DurakEnv
 from self_play import SelfPlayCallback, OpponentPool, policy_mapping_fn_creator
 

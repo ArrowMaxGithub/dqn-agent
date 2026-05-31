@@ -15,7 +15,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.algorithms.dqn.torch.dqn_torch_learner import DQNTorchLearner
 
 INVALID_MASK = -1e8
 
@@ -124,23 +123,6 @@ class DQNMaskedRLModule(TargetNetworkAPI, TorchRLModule):
             for i in range(len(self.nvec))
         ]
         return torch.cat(parts, dim=-1)
-
-
-class DurakDQNLearner(DQNTorchLearner):
-    def compute_loss_for_module(self, *, module_id, config, batch, fwd_out):
-        loss = super().compute_loss_for_module(
-            module_id=module_id, config=config, batch=batch, fwd_out=fwd_out
-        )
-
-        q_values = fwd_out[QF_PREDS]
-        mask = fwd_out["action_mask"]
-        legal_q = q_values[mask == 1]
-
-        self.metrics.log_value((module_id, "q_legal_mean"), legal_q.mean().item())
-        self.metrics.log_value((module_id, "q_legal_max"), legal_q.max().item())
-        self.metrics.log_value((module_id, "q_legal_min"), legal_q.min().item())
-
-        return loss
 
 
 class DQNAgent:
