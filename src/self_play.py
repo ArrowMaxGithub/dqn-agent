@@ -97,9 +97,8 @@ class SelfPlayCallback(RLlibCallback):
         version_eval = agent_returns.get("Player 1", 0.0)
 
         diff = version_eval - self.last_version_eval
-        significant = (
-            abs(diff) >= self.self_play_confidence
-        )  # TODO actually determine confidence
+        quot = version_eval / self.last_version_eval
+        significant = quot >= (1.0 + self.self_play_confidence)
 
         if diff > 0.0 and significant:
             print(

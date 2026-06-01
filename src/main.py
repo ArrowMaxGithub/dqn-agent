@@ -19,10 +19,10 @@ from random_agent import RandomMaskedRLModule
 def main():
     print(f"GPU supported: {torch.cuda.is_available()}")
 
-    experiment_name = f"self_play_{datetime.now()}"
+    experiment_name = f"selfplay_{datetime.now()}"
     params = {
-        "learning_rate": 2e-4,
-        "iterations": 4096,
+        "learning_rate": 1e-4,
+        "iterations": 8192,
         "epsilon_schedule": "linear",
         "epsilon_decay": 0.67,
         "initial_epsilon": 1.0,
