@@ -9,4 +9,6 @@ RUN pip install -r docker_requirements.txt
 
 COPY /src /src
 
+EXPOSE 8265
+
 CMD ["/opt/venv/bin/python","src/main.py"] 

@@ -1,6 +1,6 @@
-import os
 import math
-
+import os
+from datetime import datetime
 from pathlib import Path
 
 import torch
@@ -9,9 +9,7 @@ from tqdm import tqdm
 
 from config import dqn_config, save_parameters, set_epsilon
 from epsilon_decay import EpsilonDecay
-
-from datetime import datetime
-
+from random_agent import RandomMaskedRLModule
 from trump_fish_agent import TrumpFishRLModule
 from random_agent import RandomMaskedRLModule
 from interpolation_agent import InterpolationRLModule
@@ -64,6 +62,7 @@ def main():
     algorithm = dqn_config(
         params=params, opponents=opponents, checkpoint_path=checkpoint_path
     )
+    set_eval_interval(algorithm=algorithm, value=None)
     epsilon_decay = EpsilonDecay.from_params(params=params)
 
     log_dir = Path(f"./ray_results/{experiment_name}").resolve()
@@ -77,6 +76,7 @@ def main():
         epsilon = epsilon_decay.get(0)
         set_epsilon(epsilon=epsilon, algorithm=algorithm)
         warmup(algorithm=algorithm, iterations=params["warmup_iterations"])
+        set_eval_interval(algorithm=algorithm, value=params["eval_interval"])
         train(
             w=writer,
             algorithm=algorithm,
@@ -119,7 +119,7 @@ def train(w, algorithm, epsilon_decay, iterations):
             return_mean = agent_returns["Player 1"]
             if not math.isnan(return_mean):
                 w.add_scalar("eval/agent_episode_returns_mean", return_mean, i)
-                last_eval = return_mean
+                last_eval = 0.5 * (return_mean + 1)
 
         em = result.get("env_runners", {})
         w.add_scalar("env/episode_len_mean", em.get("episode_len_mean", 0), i)
@@ -138,11 +138,17 @@ def train(w, algorithm, epsilon_decay, iterations):
             )
 
         if last_eval is None:
-            pbar.set_description(f"Training | Epsilon: {epsilon:.3f} Last eval: None")
+            pbar.set_description(f"Training | Epsilon: {epsilon:.2f} Last eval: None")
         else:
             pbar.set_description(
-                f"Training | Epsilon: {epsilon:.3f} Last eval: {last_eval:.3f}"
+                f"Training | Epsilon: {epsilon:.2f} Last eval: {(last_eval * 100.0):.1f}%"
             )
+
+
+def set_eval_interval(algorithm, value):
+    algorithm.config._is_frozen = False
+    algorithm.config.evaluation_interval = value
+    algorithm.config._is_frozen = True
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.nvidia
+    ports:
+      - "8265:8265"
     volumes:
       - .:/app
       - ./ray_results:/root/ray_results
@@ -24,6 +26,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.amd
+    ports:
+      - "8265:8265"
     volumes:
       - .:/app
       - ./ray_results:/root/ray_results
@@ -31,7 +35,7 @@ services:
       - /dev/kfd:/dev/kfd
       - /dev/dri:/dev/dri
     environment:
-      - PATH="/opt/venv/bin:$PATH"
+      - PATH=/opt/venv/bin:$PATH
       - PYTHONPATH=/app/src
       - HSA_OVERRIDE_GFX_VERSION=10.3.0
       - CUDA_VISIBLE_DEVICES=0

@@ -9,4 +9,6 @@ RUN pip install --break-system-packages -r docker_requirements.txt
 
 COPY /src /src
 
+EXPOSE 8265
+
 CMD ["python", "src/main.py"]
