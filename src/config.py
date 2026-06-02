@@ -137,6 +137,7 @@ def dqn_config(params: dict, opponents: dict, checkpoint_path: str) -> DQNConfig
             evaluation_num_env_runners=params["num_eval_env_runners"],
             evaluation_duration_unit="episodes",
             evaluation_duration=params["eval_episodes"],
+            evaluation_config={"explore": False},
         )
         .callbacks(
             on_train_result=lambda algorithm, metrics_logger, result: (

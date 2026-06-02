@@ -69,7 +69,7 @@ class SelfPlayCallback(RLlibCallback):
         self.self_play_confidence = self_play_confidence
         self.checkpoint_path = checkpoint_path
         self.opponent_pool = opponent_pool
-        self.last_version_eval = -1.0
+        self.last_win_rate = 0.0
 
     def on_train_result(
         self,
@@ -96,19 +96,24 @@ class SelfPlayCallback(RLlibCallback):
         agent_returns = eval_runners.get("agent_episode_returns_mean", {})
         version_eval = agent_returns.get("Player 1", 0.0)
 
-        diff = version_eval - self.last_version_eval
-        quot = version_eval / self.last_version_eval
-        significant = quot >= (1.0 + self.self_play_confidence)
+        win_rate = 0.5 * (version_eval + 1)
 
-        if diff > 0.0 and significant:
+        diff = win_rate - self.last_win_rate
+        if self.last_win_rate == 0.0:
+            significant = diff >= self.self_play_confidence
+        else:
+            quot = win_rate / self.last_win_rate
+            significant = quot >= (1.0 + self.self_play_confidence)
+
+        if significant:
             print(
-                f"Improvement {self.last_version_eval:.2f} -> {version_eval:.2f} Delta: {diff:.2f}"
+                f"Improvement {(self.last_win_rate * 100.0):.1f}% -> {(win_rate * 100.0):.1f}%"
             )
-            self.last_version_eval = version_eval
+            self.last_win_rate = win_rate
             return True
         else:
             print(
-                f"No improvement: {self.last_version_eval:.2f} -> {version_eval:.2f} Delta: {diff:.2f}"
+                f"No improvement: {(self.last_win_rate * 100.0):.1f}% -> {(win_rate * 100.0):.1f}%"
             )
             return False
 
