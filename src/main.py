@@ -14,6 +14,7 @@ from datetime import datetime
 
 from trump_fish_agent import TrumpFishRLModule
 from random_agent import RandomMaskedRLModule
+from interpolation_agent import InterpolationRLModule
 
 
 def main():
@@ -54,6 +55,7 @@ def main():
     opponents = {
         "random": RandomMaskedRLModule,
         "trump_fish": TrumpFishRLModule,
+        "interpolation": InterpolationRLModule,
     }
 
     checkpoint_path = Path(f"./checkpoints/{experiment_name}").resolve()
