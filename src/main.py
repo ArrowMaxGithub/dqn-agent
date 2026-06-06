@@ -13,6 +13,7 @@ from random_agent import RandomMaskedRLModule
 from trump_fish_agent import TrumpFishRLModule
 from random_agent import RandomMaskedRLModule
 from interpolation_agent import InterpolationRLModule
+from low_card_agent import LowCardRLModule
 
 
 def main():
@@ -54,6 +55,7 @@ def main():
         "random": RandomMaskedRLModule,
         "trump_fish": TrumpFishRLModule,
         "interpolation": InterpolationRLModule,
+        "low_card": LowCardRLModule,
     }
 
     checkpoint_path = Path(f"./checkpoints/{experiment_name}").resolve()
